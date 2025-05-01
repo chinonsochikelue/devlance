@@ -12,6 +12,8 @@ import { Search, MapPin, Briefcase, UserPlus, UserCheck, Loader2, Users } from "
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { useRouter } from "next/navigation"
+import { fetchWithAuth } from "@/lib/api"
 
 type User = {
   _id: string
@@ -27,6 +29,8 @@ type User = {
 }
 
 export default function NetworkPage() {
+  
+  const router = useRouter()
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
@@ -41,9 +45,16 @@ export default function NetworkPage() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/users/all", {
-          credentials: "include",
-        })
+        const res = await fetchWithAuth("http://localhost:5000/api/users/all")
+
+        if (!res.ok) {
+          if (res.status === 401) {
+            router.push("/login")
+            return
+          }
+          throw new Error("Failed to fetch users")
+        }
+
         const data = await res.json()
 
         // Filter out current user
@@ -59,6 +70,11 @@ export default function NetworkPage() {
         setFollowingStatus(initialStatus)
       } catch (error) {
         console.error("Error fetching users:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load users. Please try again.",
+          variant: "destructive",
+        })
       } finally {
         setLoading(false)
       }
@@ -66,8 +82,10 @@ export default function NetworkPage() {
 
     if (currentUser) {
       fetchUsers()
+    } else {
+      router.push("/login")
     }
-  }, [currentUser])
+  }, [currentUser, router])
 
   useEffect(() => {
     if (searchQuery) {
@@ -314,22 +332,22 @@ export default function NetworkPage() {
           </div>
         </motion.div>
 
-        <Tabs defaultValue="all" value={activeTab} onValueChange={handleTabChange} className="mb-6">
+        <Tabs defaultValue="discover" value={activeTab} onValueChange={handleTabChange} className="mb-6">
           <TabsList className="grid w-full grid-cols-3 mb-8">
+            <TabsTrigger value="discover" onClick={focusSearch} className="lg:text-xs">
+              Discover
+            </TabsTrigger>
             <TabsTrigger value="all" onClick={focusSearch} className="lg:text-xs">
               All Devs
             </TabsTrigger>
             <TabsTrigger value="following" onClick={focusSearch} className="lg:text-xs">
               Following
             </TabsTrigger>
-            <TabsTrigger value="discover" onClick={focusSearch} className="lg:text-xs">
-              Discover
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="all" className="mt-0">
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{renderSkeletonCards()}</div>
+              <div className="gap-6">{renderSkeletonCards()}</div>
             ) : getFilteredUsers().length > 0 ? (
               <motion.div
                 variants={containerVariants}
@@ -364,13 +382,13 @@ export default function NetworkPage() {
 
           <TabsContent value="following" className="mt-0">
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{renderSkeletonCards()}</div>
+              <div className="gap-6">{renderSkeletonCards()}</div>
             ) : getFilteredUsers().length > 0 ? (
               <motion.div
                 variants={containerVariants}
                 initial="hidden"
                 animate="show"
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                className="gap-6"
               >
                 {getFilteredUsers().map(renderUserCard)}
               </motion.div>
@@ -396,13 +414,13 @@ export default function NetworkPage() {
 
           <TabsContent value="discover" className="mt-0">
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{renderSkeletonCards()}</div>
+              <div className="gap-6">{renderSkeletonCards()}</div>
             ) : getFilteredUsers().length > 0 ? (
               <motion.div
                 variants={containerVariants}
                 initial="hidden"
                 animate="show"
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                className="gap-6"
               >
                 {getFilteredUsers().map(renderUserCard)}
               </motion.div>

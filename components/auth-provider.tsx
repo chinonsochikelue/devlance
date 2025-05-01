@@ -5,6 +5,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { useAuth, fetchCurrentUser } from "@/lib/auth"
+import { useToast } from "@/hooks/use-toast"
 
 const publicRoutes = ["/", "/login", "/signup"]
 
@@ -17,6 +18,7 @@ export default function AuthProvider({
   const router = useRouter()
   const pathname = usePathname()
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -26,6 +28,10 @@ export default function AuthProvider({
           if (currentUser) {
             setUser(currentUser)
           } else if (!publicRoutes.includes(pathname)) {
+            toast({
+              title: "Authentication required",
+              description: "Please log in to continue",
+            })
             router.push("/login")
           }
         } catch (error) {
@@ -42,7 +48,14 @@ export default function AuthProvider({
   }, [isAuthenticated, pathname, router, setUser])
 
   if (loading && !isAuthenticated && !publicRoutes.includes(pathname)) {
-    return <div className="flex h-screen items-center justify-center">Loading...</div>
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return <>{children}</>

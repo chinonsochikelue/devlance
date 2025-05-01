@@ -9,7 +9,6 @@ export default function Home() {
   const { user } = useAuth()
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
-  console.log(user)
 
   return (
     <div className='max-h-screen overflow-hidden'>

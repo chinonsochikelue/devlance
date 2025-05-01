@@ -115,7 +115,7 @@ export function SignUp({ className, ...props }: SignUpProps) {
         title: "Account created",
         description: "Welcome to Devlance 🎉",
       })
-      router.push("/")
+      router.push("/home")
       setFormData({ name: "", username: "", email: "", password: "" })
     } catch (error: any) {
       toast({

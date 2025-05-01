@@ -7,7 +7,35 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Joi from 'joi';
 import { Input } from '../ui/input';
 import { useToast } from '@/hooks/use-toast';
-import useUser from '@/atoms/userAtom';
+import { useAuth } from '@/lib/auth';
+
+
+type Post = {
+  _id: string
+  text: string
+  user: {
+    _id: string
+    name: string
+    username: string
+    profilePic: string
+  }
+  createdAt: string
+  likes: string[]
+  replies: {
+    _id: string
+    text: string
+    userId: string
+    username: string
+    userProfilePic: string
+    createdAt: string
+  }[]
+  image?: string
+}
+
+
+interface CreatePostFormProps {
+  onPostCreated: (post: Post) => void
+}
 
 const pingSchema = Joi.object({
   input: Joi.string().max(280).required().messages({
@@ -16,8 +44,9 @@ const pingSchema = Joi.object({
   }),
 });
 
-function PingBox() {
-  const { user } = useUser();
+function PingBox({ onPostCreated }: CreatePostFormProps) {
+  const { user } = useAuth();
+  const userId = user?._id;
   const [input, setInput] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +103,7 @@ function PingBox() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          postedBy: user._id,
+          postedBy: userId,
           text: trimmedInput,
           img: imageUrl,
         }),

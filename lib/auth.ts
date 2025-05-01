@@ -83,9 +83,16 @@ export const fetchCurrentUser = async (): Promise<User | null> => {
 
     const res = await fetch(`http://localhost:5000/api/users/profile/${userId}`, {
       credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
     })
 
     if (!res.ok) {
+      if (res.status === 401) {
+        // Clear invalid auth data
+        localStorage.removeItem("auth-storage")
+      }
       return null
     }
 
@@ -101,11 +108,19 @@ export const logout = async (): Promise<boolean> => {
     const res = await fetch("http://localhost:5000/api/users/logout", {
       method: "POST",
       credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
     })
+
+    // Clear local storage regardless of server response
+    localStorage.removeItem("auth-storage")
 
     return res.ok
   } catch (error) {
     console.error("Error logging out:", error)
+    // Still clear local storage on error
+    localStorage.removeItem("auth-storage")
     return false
   }
 }
