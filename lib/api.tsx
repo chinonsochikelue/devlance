@@ -1,4 +1,4 @@
-import type { Post } from "./types"
+import type { Post, Reply, User, PostWithUser } from "./types"
 
 // Helper function for making authenticated API requests
 export async function fetchWithAuth(url: string, options: RequestInit = {}) {
@@ -28,197 +28,199 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
       throw error
     }
   }
+
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+
+  // Cache for user data to avoid repeated fetches
+  const userCache: Record<string, User> = {}
   
-
-  // This is a mock API function that would normally fetch data from a backend
-export async function fetchPosts(): Promise<Post[]> {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-
-  // Return mock data
-  return [
-    {
-      id: "1",
-      user: {
-        id: "recordingacademy",
-        name: "Recording Academy",
-        username: "recordingacademy",
-        avatar: "/placeholder.svg?height=40&width=40",
-        verified: true,
+  // Generic fetch function with error handling
+  async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const response = await fetch(`${API_BASE_URL}/api${endpoint}`, {
+      ...options,
+      credentials: "include", // Include cookies for authentication
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
       },
-      content:
-        "🎵 The #GRAMMYs are almost here! Get ready for an unforgettable night of music, red carpet fashion, and show-stopping performances.\n\nFollow along here and pin the feed to your home so you don't miss a thing! ✨✨",
-      timestamp: "17h",
-      likes: 99,
-      comments: 7,
-      shares: 11,
-      isLiked: false,
-      tags: ["GRAMMYs"],
-      commentsList: [
-        {
-          id: "c1",
-          user: {
-            id: "musicfan",
-            name: "Music Fan",
-            username: "musicfan",
-            avatar: "/placeholder.svg?height=40&width=40",
-            verified: false,
-          },
-          content: "Can't wait for the performances! Who's performing this year?",
-          timestamp: "16h",
-        },
-        {
-          id: "c2",
-          user: {
-            id: "grammylover",
-            name: "Grammy Lover",
-            username: "grammylover",
-            avatar: "/placeholder.svg?height=40&width=40",
-            verified: false,
-          },
-          content: "So excited to see all the red carpet looks! 👗✨",
-          timestamp: "15h",
-        },
-      ],
-    },
-    {
-      id: "2",
-      user: {
-        id: "recordingacademy",
-        name: "Recording Academy",
-        username: "recordingacademy",
-        avatar: "/placeholder.svg?height=40&width=40",
-        verified: true,
-      },
-      content:
-        "We've got your exclusive access to the GRAMMYs red carpet on Music's Biggest Night.\n\n🎵 From interviews with GRAMMY nominees to backstage moments, tune in on Sunday, Feb. 2 at 6-8 PM ET / 3-5 PM PT and join us to see #GRAMMYs live from the red carpet:",
-      timestamp: "17h",
-      likes: 45,
-      comments: 3,
-      shares: 5,
-      isLiked: false,
-      link: "https://grm.my/3ChiZi",
-      tags: ["GRAMMYs"],
-      commentsList: [
-        {
-          id: "c3",
-          user: {
-            id: "musicinsider",
-            name: "Music Insider",
-            username: "musicinsider",
-            avatar: "/placeholder.svg?height=40&width=40",
-            verified: true,
-          },
-          content: "Will there be a livestream for international viewers?",
-          timestamp: "16h",
-        },
-      ],
-    },
-    {
-      id: "3",
-      user: {
-        id: "mattnavarra",
-        name: "Matt Navarra",
-        username: "mattnavarra",
-        avatar: "/placeholder.svg?height=40&width=40",
-        verified: true,
-      },
-      content: "Threads Marketing Guide for Businesses and Creators 2024\n\nThanks for the mention @metricoolapp",
-      timestamp: "now",
-      likes: 32,
-      comments: 5,
-      shares: 8,
-      isLiked: true,
-      link: "https://metricool.com/threads-marketing-guide/",
-      tags: ["socialmediamarketing"],
-      commentsList: [
-        {
-          id: "c4",
-          user: {
-            id: "socialexpert",
-            name: "Social Media Expert",
-            username: "socialexpert",
-            avatar: "/placeholder.svg?height=40&width=40",
-            verified: false,
-          },
-          content: "Great resource! Thanks for sharing this guide.",
-          timestamp: "10m",
-        },
-        {
-          id: "c5",
-          user: {
-            id: "contentcreator",
-            name: "Content Creator",
-            username: "contentcreator",
-            avatar: "/placeholder.svg?height=40&width=40",
-            verified: false,
-          },
-          content: "Just what I needed for my business strategy!",
-          timestamp: "5m",
-        },
-      ],
-    },
-    {
-      id: "4",
-      user: {
-        id: "lindseygamble",
-        name: "Lindsey Gamble",
-        username: "lindseygamble_",
-        avatar: "/placeholder.svg?height=40&width=40",
-        verified: false,
-      },
-      content: "🚨 NEW 🚨 TikTok now allows you to upload a custom cover/thumbnail for your videos.",
-      timestamp: "7m",
-      likes: 15,
-      comments: 2,
-      shares: 3,
-      isLiked: false,
-      image: "/placeholder.svg?height=300&width=400",
-      commentsList: [
-        {
-          id: "c6",
-          user: {
-            id: "tiktoker",
-            name: "TikTok Creator",
-            username: "tiktoker",
-            avatar: "/placeholder.svg?height=40&width=40",
-            verified: false,
-          },
-          content: "Finally! This is a game-changer for content creators.",
-          timestamp: "5m",
-        },
-      ],
-    },
-  ]
-}
-
-// This function would normally make a server request to fetch metadata
-export async function fetchLinkMetadata(url: string): Promise<any> {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 1500))
-
-  // Mock data based on URL
-  if (url.includes("grm.my")) {
-    return {
-      title: "GRAMMY Awards Red Carpet Live Stream",
-      description: "Watch exclusive interviews and behind-the-scenes moments from the GRAMMY Awards red carpet.",
-      image: "/placeholder.svg?height=200&width=300",
-      domain: "grammys.com",
+    })
+  
+    const data = await response.json()
+  
+    if (!response.ok) {
+      throw new Error(data.error || "Something went wrong")
     }
-  } else if (url.includes("metricool.com")) {
-    return {
-      title: "2024 Threads Marketing Guide for Businesses and Creators",
-      description:
-        "Learn how to leverage Threads for your business or personal brand with our comprehensive marketing guide.",
-      image: "/placeholder.svg?height=200&width=300",
-      domain: "metricool.com",
+  
+    return data
+  }
+  
+  // Fetch user by ID
+  export async function fetchUser(userId: string): Promise<User> {
+    // Return from cache if available
+    if (userCache[userId]) {
+      return userCache[userId]
     }
-  } else {
-    return {
-      title: "Link Preview",
-      description: "This is a preview of the linked content.",
-      image: "/placeholder.svg?height=200&width=300",
-      domain: new URL(url).hostname,
+    
+    try {
+      const user = await fetchAPI<User>(`/users/profile/${userId}`)
+      // Cache the user data
+      userCache[userId] = user
+      return user
+    } catch (error) {
+      console.error(`Error fetching user ${userId}:`, error)
+      // Return a placeholder user if we can't fetch the real one
+      return {
+        _id: userId,
+        name: "Unknown User",
+        username: "unknown",
+        email: "",
+        profilePic: "/placeholder.svg?height=40&width=40"
+      }
     }
   }
-}
+  
+  // Fetch feed posts (requires authentication)
+  export async function fetchFeedPosts(): Promise<Post[]> {
+    try {
+      return await fetchAPI<Post[]>("/pings/feed")
+    } catch (error) {
+      console.error("Error fetching feed posts:", error)
+      throw error
+    }
+  }
+  
+  // Fetch posts with user data
+  export async function fetchFeedPostsWithUsers(): Promise<PostWithUser[]> {
+    try {
+      const posts = await fetchFeedPosts()
+      
+      // Fetch unique user IDs
+      const userIds = [...new Set(posts.map(post => post.postedBy))]
+      
+      // Fetch all users in parallel
+      const userPromises = userIds.map(userId => fetchUser(userId))
+      const users = await Promise.all(userPromises)
+      
+      // Create a map of user IDs to user objects
+      const userMap = users.reduce((map, user) => {
+        map[user._id] = user
+        return map
+      }, {} as Record<string, User>)
+      
+      // Combine posts with user data
+      return posts.map(post => ({
+        ...post,
+        postedBy: userMap[post.postedBy] || {
+          _id: post.postedBy,
+          name: "Unknown User",
+          username: "unknown",
+          email: "",
+          profilePic: "/placeholder.svg?height=40&width=40"
+        }
+      }))
+    } catch (error) {
+      console.error("Error fetching feed posts with users:", error)
+      throw error
+    }
+  }
+  
+  // Fetch posts by a specific user
+  export async function fetchUserPosts(username: string): Promise<Post[]> {
+    try {
+      return await fetchAPI<Post[]>(`/posts/user/${username}`)
+    } catch (error) {
+      console.error(`Error fetching posts for user ${username}:`, error)
+      throw error
+    }
+  }
+  
+  // Fetch a single post by ID
+  export async function fetchPost(postId: string): Promise<Post> {
+    try {
+      return await fetchAPI<Post>(`/posts/${postId}`)
+    } catch (error) {
+      console.error(`Error fetching post ${postId}:`, error)
+      throw error
+    }
+  }
+  
+  
+  // Like or unlike a post
+  export async function likeUnlikePost(postId: string): Promise<{ message: string }> {
+    try {
+      return await fetchAPI<{ message: string }>(`/pings/like/${postId}`, {
+        method: "PUT",
+      })
+    } catch (error) {
+      console.error(`Error liking/unliking post ${postId}:`, error)
+      throw error
+    }
+  }
+  
+  // Reply to a post
+  export async function replyToPost(postId: string, text: string): Promise<Reply> {
+    try {
+      return await fetchAPI<Reply>(`/pings/reply/${postId}`, {
+        method: "PUT",
+        body: JSON.stringify({ text }),
+      })
+    } catch (error) {
+      console.error(`Error replying to post ${postId}:`, error)
+      throw error
+    }
+  }
+  
+  // Delete a post
+  export async function deletePost(postId: string): Promise<{ message: string }> {
+    try {
+      return await fetchAPI<{ message: string }>(`/pings/${postId}`, {
+        method: "DELETE",
+      })
+    } catch (error) {
+      console.error(`Error deleting post ${postId}:`, error)
+      throw error
+    }
+  }
+  
+  // Format timestamp to relative time (e.g., "2h ago")
+  export function formatTimestamp(timestamp: string): string {
+    const now = new Date()
+    const postDate = new Date(timestamp)
+    const diffInSeconds = Math.floor((now.getTime() - postDate.getTime()) / 1000)
+  
+    if (diffInSeconds < 60) {
+      return `${diffInSeconds}s`
+    }
+  
+    const diffInMinutes = Math.floor(diffInSeconds / 60)
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes}m`
+    }
+  
+    const diffInHours = Math.floor(diffInMinutes / 60)
+    if (diffInHours < 24) {
+      return `${diffInHours}h`
+    }
+  
+    const diffInDays = Math.floor(diffInHours / 24)
+    if (diffInDays < 7) {
+      return `${diffInDays}d`
+    }
+  
+    return postDate.toLocaleDateString()
+  }
+  
+  export async function fetchLinkMetadata(url: string): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/link-preview?url=${url}`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch link metadata")
+      }
+      return await response.json()
+    } catch (error) {
+      console.error("Error fetching link metadata:", error)
+      throw error
+    }
+  }
+  

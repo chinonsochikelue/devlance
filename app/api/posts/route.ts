@@ -39,7 +39,7 @@ export async function GET() {
             comments: 3,
             shares: 5,
             isLiked: false,
-            link: "https://grm.my/3ChiZi",
+            link: "https://www.innovationhub.world/post/what-would-happen-if-we-didn-t-have-friction",
             tags: ["GRAMMYs"],
         },
         // Add more mock posts as needed

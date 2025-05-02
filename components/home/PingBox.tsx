@@ -97,7 +97,7 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
     setLoading(true);
 
     try {
-        console.log('Submitting ping:', { user });
+      console.log('Submitting ping:', { user });
       const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/pings/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -266,12 +266,109 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
                     hidden: { opacity: 0, scale: 0 },
                     show: { opacity: 1, scale: 1 },
                   }}
-                  whileHover={{ scale: 1.5, rotate: 10 }}
-                  whileTap={{ scale: 0.9 }}
+                  whileHover={{ scale: 1, rotate: 4 }}
+                  whileTap={{ scale: 0.7 }}
                   transition={{ type: 'spring', stiffness: 300 }}
                   className="cursor-pointer"
                 >
-                  <Image className="h-5 w-5" />
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    className="text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full text-sm font-medium flex-1"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="mr-1"
+                    >
+                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                      <circle cx="9" cy="9" r="2" />
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                    </svg>
+                    Media
+                  </Button>
+                </motion.div>
+
+                <motion.div
+                  key="gif-icon"
+                  onClick={handleImageClick}
+                  variants={{
+                    hidden: { opacity: 0, scale: 0 },
+                    show: { opacity: 1, scale: 1 },
+                  }}
+                  whileHover={{ scale: 1, rotate: 4 }}
+                  whileTap={{ scale: 0.7 }}
+                  transition={{ type: 'spring', stiffness: 300 }}
+                  className="cursor-pointer"
+                >
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    className="text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full text-sm font-medium flex-1"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="mr-1"
+                    >
+                      <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5" />
+                      <path d="M8.5 8.5v.01" />
+                      <path d="M16 15.5v.01" />
+                      <path d="M12 12v.01" />
+                    </svg>
+                    GIF
+                  </Button>
+                </motion.div>
+
+                <motion.div
+                  key="poll-icon"
+                  onClick={handleImageClick}
+                  variants={{
+                    hidden: { opacity: 0, scale: 0 },
+                    show: { opacity: 1, scale: 1 },
+                  }}
+                  whileHover={{ scale: 1, rotate: 4 }}
+                  whileTap={{ scale: 0.7 }}
+                  transition={{ type: 'spring', stiffness: 300 }}
+                  className="cursor-pointer"
+                >
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    className="text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full text-sm font-medium flex-1"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="mr-1"
+                    >
+                      <path d="M17 6.1H3" />
+                      <path d="M21 12.1H3" />
+                      <path d="M15.1 18H3" />
+                    </svg>
+                    Poll
+                  </Button>
                 </motion.div>
               </motion.div>
 
