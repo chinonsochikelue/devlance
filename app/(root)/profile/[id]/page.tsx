@@ -4,8 +4,6 @@ import { motion } from "framer-motion"
 import Image from "next/image"
 import {
   Globe,
-  Github,
-  Linkedin,
   MapPin,
   Calendar,
   Star,
@@ -16,10 +14,13 @@ import {
   SparklesIcon,
   Briefcase,
   Bolt,
+  GitFork,
+  GraduationCap,
 } from "lucide-react"
+import { SocialIcon } from 'react-social-icons'
 import { Button } from "@/components/ui/button"
 import { TechBadges } from "@/components/tech-badges"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Wave from "@/public/wave.json"
 import dynamic from "next/dynamic"
@@ -32,7 +33,8 @@ import { useAuth } from "@/lib/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import UserPostCard from "@/components/profile/userPostCard"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
-import PostCard from "@/components/profile/post-card"
+import ProfileCompletionMeter from "@/components/profile/profile-completion-meter"
+import { FaGithub, FaLinkedin, FaGlobe, FaTwitter, FaDribbble, FaBehance } from "react-icons/fa";
 
 // Dynamically import with SSR disabled
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false })
@@ -53,37 +55,30 @@ type User = {
   available?: boolean
   hourlyRate?: number
   languages?: { name: string; proficiency: string }[]
-  experience?: {
-    title: string
-    company: string
-    location: string
-    from: string
-    to: string
-    current: boolean
-    description: string
-  }[]
-  education?: {
-    school: string
-    degree: string
-    fieldOfStudy: string
-    from: string
-    to: string
-    current: boolean
-    description: string
-  }[]
-  githubRepos?: {
-    id: string
-    name: string
-    html_url: string
-    description: string
-    language: string
-  }[]
+  experience?: Experience[]
+  education?: Education[]
+  skills?: { name: string; level: string }[]
+  githubUsername?: string
+  githubRepos?: Repository[]
   links?: {
     website?: string
     twitter?: string
     github?: string
     linkedin?: string
   }
+}
+
+type Education = {
+  degree: string
+  school: string
+  year: string
+}
+
+type Experience = {
+  role: string
+  company: string
+  period: string
+  description: string
 }
 
 type Post = {
@@ -106,6 +101,18 @@ type Post = {
     createdAt: string
   }[]
   image?: string
+}
+
+type Repository = {
+  id: string
+  name: string
+  html_url: string
+  description: string
+  language: string
+  stargazers_count?: number
+  forks_count?: number
+  private: boolean
+  updated_at: string
 }
 
 // Mock developer data
@@ -181,29 +188,29 @@ const developer = {
   ],
 }
 
+const detectLinkType = (url: string): keyof typeof linkIcons => {
+  if (!url) return "website";
+
+  const lowerUrl = url.toLowerCase();
+
+  if (lowerUrl.includes("github.com")) return "github";
+  if (lowerUrl.includes("linkedin.com")) return "linkedin";
+  if (lowerUrl.includes("behance.net")) return "behance";
+  if (lowerUrl.includes("dribbble.com")) return "dribbble";
+  if (lowerUrl.includes("twitter.com")) return "twitter";
+
+  return "website"; // default/fallback
+};
+
 // Mapping of link types to icons
 const linkIcons = {
-  website: Globe,
-  linkedin: Linkedin,
-  github: Github,
-  resume: FileText,
-  dribbble: () => (
-    <svg
-      viewBox="0 0 24 24"
-      width="24"
-      height="24"
-      stroke="currentColor"
-      strokeWidth="2"
-      fill="none"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5"
-    >
-      <circle cx="12" cy="12" r="10"></circle>
-      <path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"></path>
-    </svg>
-  ),
-}
+  github: FaGithub,
+  linkedin: FaLinkedin,
+  twitter: FaTwitter,
+  dribbble: FaDribbble,
+  behance: FaBehance,
+  website: FaGlobe,
+};
 
 export default function UserData() {
 
@@ -214,6 +221,8 @@ export default function UserData() {
   const [loading, setLoading] = useState(true)
   const [isFollowing, setIsFollowing] = useState(false)
   const [followersCount, setFollowersCount] = useState(0)
+  const [expanded, setExpanded] = useState(false);
+  const limit = 200;
 
 
   useEffect(() => {
@@ -280,6 +289,27 @@ export default function UserData() {
       .toUpperCase()
   }
 
+  const getLanguageColor = (language: string) => {
+    const colors: Record<string, string> = {
+      JavaScript: "bg-yellow-500",
+      TypeScript: "bg-blue-500",
+      Python: "bg-green-500",
+      Java: "bg-red-500",
+      "C#": "bg-purple-500",
+      PHP: "bg-indigo-500",
+      Ruby: "bg-pink-500",
+      Go: "bg-cyan-500",
+      Rust: "bg-orange-500",
+      Swift: "bg-rose-500",
+      Kotlin: "bg-amber-500",
+      Dart: "bg-teal-500",
+      HTML: "bg-red-600",
+      CSS: "bg-blue-600",
+    }
+
+    return colors[language] || "bg-gray-500"
+  }
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -303,6 +333,26 @@ export default function UserData() {
     )
   }
 
+  const getLevelBadgeClass = (level: string) => {
+    switch (level.toLowerCase()) {
+      case "native":
+      case "expert":
+        return "bg-green-100 text-green-800"
+      case "fluent":
+      case "advanced":
+        return "bg-blue-100 text-blue-800"
+      case "intermediate":
+        return "bg-yellow-100 text-yellow-800"
+      case "beginner":
+        return "bg-orange-100 text-orange-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const isLong = user.bio.length > limit;
+  const displayedBio = expanded || !isLong ? user.bio : `${user.bio.slice(0, limit)}...`;
+
   return (
     <div className="min-h-screen ">
       {/* Cover image */}
@@ -324,7 +374,16 @@ export default function UserData() {
                   <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2">
                     <div className="h-24 w-24 md:h-32 md:w-32 rounded-full border-4 border-background overflow-hidden">
                       <Avatar className="h-full w-full">
-                        <AvatarImage src={user.profilePic || "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png"} alt={user.name} />
+                        <AvatarImage
+                          src={
+                            user.profilePic || "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png"
+                          }
+                          alt={user.name}
+                          style={{
+                            aspectRatio: "96/96",
+                            objectFit: "cover"
+                          }}
+                        />
                         <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                       </Avatar>
                     </div>
@@ -335,7 +394,6 @@ export default function UserData() {
                   <div className="mt-10 flex flex-col items-center animate-slide-up">
                     <h1 className="text-2xl font-bold">{user.name}</h1>
                     <p className="text-muted-foreground">@{user.username}</p>
-                    {user.bio && <p className="text-sm leading-loose">{user.bio}</p>}
 
                     <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                       {user.role && (
@@ -379,13 +437,14 @@ export default function UserData() {
                       ${user?.hourlyRate}/hr
                     </div>
 
-                    {currentUser && currentUser._id !== user._id && (
-                      <Link href={`/profile/updateProfile/${user._id}`}>
+                    {currentUser && currentUser._id === user._id && (
+                      <Link href="/settings">
                         <div className="cursor-pointer">
                           <Bolt />
                         </div>
                       </Link>
                     )}
+
                   </div>
 
                   <div className="mt-6 w-full space-y-2 animate-fade-in">
@@ -394,6 +453,7 @@ export default function UserData() {
                       <MessageSquare className="h-4 w-4 mr-2" />
                       Contact
                     </Button>
+                    <ProfileCompletionMeter />
                   </div>
                 </CardContent>
 
@@ -401,88 +461,105 @@ export default function UserData() {
 
               {/* Posts  */}
               <Tabs defaultValue="posts" className="mt-6">
-              <Card className="mb-6 max-h-[500px] overflow-y-auto scrollbar-hide">
-                {posts.length > 0 ? (
-                  posts.map((post) => <UserPostCard user={user} key={post._id} post={post} />)
-                ) : (
-                  <div className="rounded-lg border p-8 text-center">
-                    <h3 className="text-lg font-medium">No posts yet</h3>
-                    <p className="text-muted-foreground mt-2">
-                      {user._id === currentUser?._id
-                        ? "Share your first post with the community!"
-                        : `${user.name} hasn't posted anything yet.`}
-                    </p>
-                  </div>
-                )}
-              </Card>
+                <Card className="mb-6 max-h-[500px] overflow-y-auto scrollbar-hide">
+                  {posts.length > 0 ? (
+                    posts.map((post) => <UserPostCard user={user} key={post._id} post={post} />)
+                  ) : (
+                    <div className="rounded-lg border p-8 text-center">
+                      <h3 className="text-lg font-medium">No posts yet</h3>
+                      <p className="text-muted-foreground mt-2">
+                        {user._id === currentUser?._id
+                          ? "Share your first post with the community!"
+                          : `${user.name} hasn't posted anything yet.`}
+                      </p>
+                    </div>
+                  )}
+                </Card>
               </Tabs>
 
               {/* Availability */}
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle className="text-lg">Availability</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center text-sm">
-                        <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
-                        <span>Available from</span>
+              {user?.available && user?.availableFrom ? (
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Availability</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center text-sm">
+                          <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>Available from</span>
+                        </div>
+                        <span className="font-medium">{user.availableFrom}</span>
                       </div>
-                      <span className="font-medium">{developer.availableFrom}</span>
-                    </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center text-sm">
-                        <Briefcase className="h-4 w-4 mr-2 text-muted-foreground" />
-                        <span>Status</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center text-sm">
+                          <Briefcase className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>Status</span>
+                        </div>
+                        {user.available ? (
+                          <Badge className="bg-green-500 hover:bg-green-600">Available for hire</Badge>
+                        ) : (
+                          <Badge variant="secondary">Not available</Badge>
+                        )}
                       </div>
-                      {developer.availableForHire ? (
-                        <Badge className="bg-green-500 hover:bg-green-600">Available for hire</Badge>
-                      ) : (
-                        <Badge variant="secondary">Not available</Badge>
-                      )}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              ) : (
+                <></>
+              )}
 
               {/* Links */}
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle className="text-lg">Links</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {developer.links.map((link) => {
-                    const IconComponent = linkIcons[link.type as keyof typeof linkIcons] || ExternalLink
-                    return (
-                      <Button key={link.url} variant="outline" className="w-full justify-start" asChild>
-                        <a href={link.url} target="_blank" rel="noopener noreferrer">
-                          <IconComponent className="h-4 w-4 mr-2" />
-                          {link.title}
-                        </a>
-                      </Button>
-                    )
-                  })}
-                </CardContent>
-              </Card>
+              {user.links && user.links.length > 0 ? (
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Links</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {user.links.map((link) => {
+                      const type = detectLinkType(link.url);
+                      const IconComponent = linkIcons[type] || ExternalLink;
+
+                      return (
+                        <Button key={link.url} variant="outline" className="w-full justify-start" asChild>
+                          <a href={link.url} target="_blank" rel="noopener noreferrer">
+                            <IconComponent className="h-4 w-4 mr-2" />
+                            {link.title || link.url}
+                          </a>
+                        </Button>
+                      );
+                    })}
+
+                  </CardContent>
+                </Card>
+              ) : (<></>
+              )}
+
 
               {/* Languages */}
-              <Card className="mb-6">
-                <CardHeader>
-                  <CardTitle className="text-lg">Languages</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {developer.languages.map((language) => (
-                      <div key={language.name} className="flex justify-between items-center">
-                        <span>{language.name}</span>
-                        <Badge variant="secondary">{language.level}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              {user.languages && user.languages.length > 0 ? (
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Languages</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {user.languages.map((language) => (
+                        <div key={language.name} className="flex justify-between items-center">
+                          <span>{language.name}</span>
+                          <Badge variant="secondary">{language.level || "Unknown"}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                </>
+              )}
+
             </motion.div>
           </div>
 
@@ -518,80 +595,153 @@ export default function UserData() {
                   <CardTitle className="text-lg">About</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground mb-4">{developer.bio}</p>
+                  <p className="text-muted-foreground mb-4"> {displayedBio}
+                    {isLong && (
+                      <button
+                        className="ml-2 text-primary underline text-sm"
+                        onClick={() => setExpanded(!expanded)}
+                      >
+                        {expanded ? "See less" : "See more"}
+                      </button>
+                    )}</p>
 
-                  <h3 className="font-medium mb-2">Skills</h3>
-                  <TechBadges techs={developer.skills} className="mb-6" />
-
-                  <h3 className="font-medium mb-3">Education</h3>
-                  <div className="space-y-3 mb-6">
-                    {developer.education.map((edu, index) => (
-                      <div key={index} className="flex justify-between">
-                        <div>
-                          <p className="font-medium">{edu.degree}</p>
-                          <p className="text-sm text-muted-foreground">{edu.school}</p>
+                  {user.skills && user.skills.length > 0 && (
+                    <>
+                      <code className="h-5 w-5" />
+                      <h3 className="font-medium mb-3 text-2xl">Skills</h3>
+                      <CardContent>
+                        <div className="flex flex-wrap gap-2">
+                          {user.skills.map((skill, index) => (
+                            <Badge key={index} className={`px-3 py-1 ${getLevelBadgeClass(skill.level)} cursor-default`}>
+                              {skill.name}
+                              <span className="ml-1 text-xs opacity-70">{skill.level}</span>
+                            </Badge>
+                          ))}
                         </div>
-                        <span className="text-sm text-muted-foreground">{edu.year}</span>
-                      </div>
-                    ))}
-                  </div>
+                      </CardContent>
+                    </>
+                  )}
 
-                  <h3 className="font-medium mb-3">Work Experience</h3>
-                  <div className="space-y-4">
-                    {developer.experience.map((exp, index) => (
-                      <div key={index}>
-                        <div className="flex justify-between mb-1">
-                          <p className="font-medium">{exp.role}</p>
-                          <span className="text-sm text-muted-foreground">{exp.period}</span>
-                        </div>
-                        <p className="text-sm mb-1">{exp.company}</p>
-                        <p className="text-sm text-muted-foreground">{exp.description}</p>
+                  {user.education && user.education.length > 0 ? (
+                    <>
+                      <h3 className="font-medium mb-3 text-2xl">Education</h3>
+                      <div className="space-y-3 mb-6">
+                        {user.education.map((edu, index) => (
+                          <div key={index} className="flex justify-between">
+                            <div>
+                              <p className="font-medium">{edu.degree}</p>
+                              <p className="text-sm text-muted-foreground">{edu.school}</p>
+                            </div>
+                            <span className="text-sm text-muted-foreground">{edu.year}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-20">
+                      <GraduationCap className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                      <h2 className="text-2xl font-bold">No education listed</h2>
+                      <p className="text-muted-foreground mt-2">
+                        {user._id === id
+                          ? "Add your educational background in settings"
+                          : `${user.name} hasn't added any education yet`}
+                      </p>
+                    </div>
+                  )}
+
+                  {user.experience && user.experience.length > 0 ? (
+                    <>
+                      <h3 className="font-medium mb-3 text-2xl">Work Experience</h3>
+                      <div className="space-y-4">
+                        {user.experience.map((exp, index) => (
+                          <div key={index}>
+                            <div className="flex justify-between mb-1">
+                              <p className="font-medium">{exp.role}</p>
+                              <span className="text-sm text-muted-foreground">{exp.period}</span>
+                            </div>
+                            <p className="text-sm mb-1">{exp.company}</p>
+                            <p className="text-sm text-muted-foreground">{exp.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-20">
+                      <Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                      <h2 className="text-2xl font-bold">No experience listed</h2>
+                      <p className="text-muted-foreground mt-2">
+                        {user._id === id
+                          ? "Add your professional experience in settings"
+                          : `${user.name} hasn't added any experience yet`}
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
               {/* GitHub Repositories */}
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="text-lg">GitHub Repositories</CardTitle>
-                    <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
-                      <a href={`https://github.com/${developer.username}`} target="_blank" rel="noopener noreferrer">
-                        View All
-                        <ExternalLink className="h-3.5 w-3.5 ml-1" />
-                      </a>
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {developer.githubRepos.map((repo) => (
-                    <a
-                      key={repo.name}
-                      href={repo.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-medium text-primary flex items-center">
-                          <Code className="h-4 w-4 mr-2" />
-                          {repo.name}
-                        </h3>
-                        <div className="flex items-center text-muted-foreground">
-                          <Star className="h-4 w-4 mr-1 fill-muted-foreground" />
-                          <span className="text-sm">{repo.stars}</span>
+              {user.githubRepos && user.githubRepos.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-lg">GitHub Repositories</CardTitle>
+                      <Button variant="ghost" size="sm" className="text-xs gap-1" asChild>
+                        <a
+                          href={`https://github.com/${user.githubUsername}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          View All
+                          <ExternalLink className="h-3.5 w-3.5 ml-1" />
+                        </a>
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {user.githubRepos.map((repo) => (
+                      <a
+                        key={repo.name}
+                        href={repo.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <h3 className="font-medium text-primary flex items-center">
+                            <Code className="h-4 w-4 mr-2" />
+                            {repo.name}
+                          </h3>
+                          {repo.stargazers_count !== undefined && (
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Star className="h-4 w-4" />
+                              <span>{repo.stargazers_count}</span>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-2">{repo.description}</p>
-                      <Badge variant="outline" className="text-xs">
-                        {repo.language}
-                      </Badge>
-                    </a>
-                  ))}
-                </CardContent>
-              </Card>
+                        <p className="text-sm text-muted-foreground mb-2">{repo.description}</p>
+                        <div className="flex flex-wrap items-center gap-3">
+                          {repo.language && (
+                            <Badge variant="outline" className="text-xs">
+                              <span className={`h-3 w-3 rounded-full mr-2 ${getLanguageColor(repo.language)}`}></span>
+                              {repo.language}
+                            </Badge>
+                          )}
+                          {repo.forks_count !== undefined && (
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <GitFork className="h-4 w-4" />
+                              <span>{repo.forks_count}</span>
+                            </div>
+                          )}
+                          <div className="text-sm text-muted-foreground">
+                            Updated {new Date(repo.updated_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </a>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
             </motion.div>
           </div>
         </div>
