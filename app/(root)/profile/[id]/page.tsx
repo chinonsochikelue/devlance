@@ -35,6 +35,10 @@ import UserPostCard from "@/components/profile/userPostCard"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import ProfileCompletionMeter from "@/components/profile/profile-completion-meter"
 import { FaGithub, FaLinkedin, FaGlobe, FaTwitter, FaDribbble, FaBehance } from "react-icons/fa";
+import { format } from "date-fns"
+import SkillEndorsement from "@/components/profile/skill-endorsement"
+import SkillEndorsements from "@/components/profile/skill-endorsement"
+import ResumeExport from "@/components/profile/resume-export"
 
 // Dynamically import with SSR disabled
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false })
@@ -54,10 +58,20 @@ type User = {
   availableFrom?: string
   available?: boolean
   hourlyRate?: number
+  joinedDate?: string
   languages?: { name: string; proficiency: string }[]
   experience?: Experience[]
   education?: Education[]
-  skills?: { name: string; level: string }[]
+  skills?: {
+    name: string
+    level: string
+    endorsements?: {
+      userId: string
+      name: string
+      profilePic?: string
+      timestamp: string
+    }[]
+  }[]
   githubUsername?: string
   githubRepos?: Repository[]
   links?: {
@@ -222,13 +236,15 @@ export default function UserData() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [followersCount, setFollowersCount] = useState(0)
   const [expanded, setExpanded] = useState(false);
+  const [showEndorsements, setShowEndorsements] = useState(false)
+
   const limit = 200;
 
 
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/users/profile/${id}`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/users/profile/${id}`, {
           credentials: "include",
         })
         const data = await res.json()
@@ -242,11 +258,10 @@ export default function UserData() {
         console.error("Error fetching profile:", error)
       }
     }
-
     const fetchUserPosts = async () => {
       console.log(id)
       try {
-        const res = await fetch(`http://localhost:5000/api/pings/user/${id}`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/pings/user/${id}`, {
           credentials: "include",
         })
         const data = await res.json()
@@ -333,6 +348,11 @@ export default function UserData() {
     )
   }
 
+
+  const handleEndorsementChange = () => {
+    fetchProfile()
+  }
+
   const getLevelBadgeClass = (level: string) => {
     switch (level.toLowerCase()) {
       case "native":
@@ -350,8 +370,10 @@ export default function UserData() {
     }
   }
 
-  const isLong = user.bio.length > limit;
-  const displayedBio = expanded || !isLong ? user.bio : `${user.bio.slice(0, limit)}...`;
+  const isOwnProfile = currentUser?._id === user._id
+
+  const isLong = user?.bio?.length > limit;
+  const displayedBio = expanded || !isLong ? user?.bio : `${user?.bio.slice(0, limit)}...`;
 
   return (
     <div className="min-h-screen ">
@@ -448,11 +470,23 @@ export default function UserData() {
                   </div>
 
                   <div className="mt-6 w-full space-y-2 animate-fade-in">
+                    {user.joinedDate && (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span>Joined {format(new Date(user.joinedDate), "MMMM yyyy")}</span>
+                      </div>
+                    )}
                     <Button className="w-full">Hire Me</Button>
                     <Button variant="outline" className="w-full">
                       <MessageSquare className="h-4 w-4 mr-2" />
                       Contact
                     </Button>
+                    {/* Resume Export */}
+                    {(isOwnProfile || currentUser) && (
+                      <div className="mt-4">
+                        <ResumeExport userId={user._id} isOwnProfile={isOwnProfile} />
+                      </div>
+                    )}
                     <ProfileCompletionMeter />
                   </div>
                 </CardContent>
@@ -606,21 +640,32 @@ export default function UserData() {
                     )}</p>
 
                   {user.skills && user.skills.length > 0 && (
+                    <Button variant="outline" onClick={() => setShowEndorsements(!showEndorsements)}>
+                      {showEndorsements ? "Hide Skills" : "View Skills"}
+                    </Button>
+                  )}
+
+                  {/* Skills and Endorsements */}
+                  {showEndorsements && user.skills && user.skills.length > 0 && (
+                    <div className="mt-4 p-4 border rounded-lg bg-muted/10">
+                      <h3 className="text-lg font-medium mb-4">Skills & Endorsements</h3>
+                      <SkillEndorsements userId={user._id} userSkills={user.skills} isOwnProfile={isOwnProfile} />
+                    </div>
+                  )}
+
+                  {/* {user.skills && user.skills.length > 0 && (
                     <>
                       <code className="h-5 w-5" />
                       <h3 className="font-medium mb-3 text-2xl">Skills</h3>
                       <CardContent>
                         <div className="flex flex-wrap gap-2">
                           {user.skills.map((skill, index) => (
-                            <Badge key={index} className={`px-3 py-1 ${getLevelBadgeClass(skill.level)} cursor-default`}>
-                              {skill.name}
-                              <span className="ml-1 text-xs opacity-70">{skill.level}</span>
-                            </Badge>
+                              <SkillEndorsement userId={user._id} key={index} skills={user.skills} onEndorsementChange={handleEndorsementChange} />
                           ))}
                         </div>
                       </CardContent>
                     </>
-                  )}
+                  )} */}
 
                   {user.education && user.education.length > 0 ? (
                     <>

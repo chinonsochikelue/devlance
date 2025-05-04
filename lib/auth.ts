@@ -15,6 +15,8 @@ export type User = {
   following?: string[]
   role?: string
   location?: string
+  isAdmin?: boolean
+  verified?: boolean
   availableFrom?: string
   available?: boolean
   hourlyRate?: number

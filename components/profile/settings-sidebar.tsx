@@ -6,7 +6,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
-import { User, Github, BookOpen, Briefcase, LinkIcon, Settings, Globe, Clock, Code } from "lucide-react"
+import { User, Github, BookOpen, Briefcase, LinkIcon, Settings, Globe, Clock, Code, Shield } from "lucide-react"
 
 interface SidebarNavProps extends React.HTMLAttributes<HTMLElement> {}
 
@@ -53,6 +53,11 @@ export default function SettingsSidebar({ className, ...props }: SidebarNavProps
       title: "Availability",
       href: "/settings/availability",
       icon: Clock,
+    },
+    {
+      title: "Verification",
+      href: "/settings/verification",
+      icon: Shield,
     },
     {
       title: "Account",

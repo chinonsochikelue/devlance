@@ -90,10 +90,10 @@ export default function PostCard({ post }: PostCardProps) {
 
     const getInitials = (name: string) => {
         return name
-            .split(" ")
-            .map((n) => n[0])
-            .join("")
-            .toUpperCase()
+            ?.split(" ")
+            ?.map((n) => n[0])
+            ?.join("")
+            ?.toUpperCase()
     }
 
     const formatDate = (dateString: string) => {
@@ -104,26 +104,26 @@ export default function PostCard({ post }: PostCardProps) {
         <Card>
             <CardContent className="p-6">
                 <div className="flex items-start gap-4">
-                    <Link href={`/profile/${post.user._id}`}>
+                    <Link href={`/profile/${post.user?._id}`}>
                         <Avatar className="h-10 w-10">
-                            <AvatarImage src={post.user.profilePic || "/placeholder.svg"} alt={post.user.name} />
-                            <AvatarFallback>{getInitials(post.user.name)}</AvatarFallback>
+                            <AvatarImage src={post?.user?.profilePic || "/placeholder.svg"} alt={post?.user?.name} />
+                            <AvatarFallback>{getInitials(post?.user?.name)}</AvatarFallback>
                         </Avatar>
                     </Link>
                     <div className="flex-1 space-y-1.5">
                         <div className="flex items-center gap-2">
-                            <Link href={`/profile/${post.user._id}`} className="font-semibold hover:underline">
-                                {post.user.name}
+                            <Link href={`/profile/${post?.user?._id}`} className="font-semibold hover:underline">
+                                {post?.user?.name}
                             </Link>
-                            <Link href={`/profile/${post.user._id}`} className="text-sm text-muted-foreground hover:underline">
-                                @{post.user.username}
+                            <Link href={`/profile/${post?.user?._id}`} className="text-sm text-muted-foreground hover:underline">
+                                @{post?.user?.username}
                             </Link>
                             <span className="text-sm text-muted-foreground">·</span>
-                            <span className="text-sm text-muted-foreground">{formatDate(post.createdAt)}</span>
+                            <span className="text-sm text-muted-foreground">{formatDate(post?.createdAt)}</span>
                         </div>
-                        <p className="text-sm leading-loose">{post.text}</p>
-                        {post.image && (
-                            <img src={post.image || "/placeholder.svg"} alt="Post attachment" className="mt-3 rounded-lg border" />
+                        <p className="text-sm leading-loose">{post?.text}</p>
+                        {post?.image && (
+                            <img src={post?.image || "/placeholder.svg"} alt="Post attachment" className="mt-3 rounded-lg border" />
                         )}
                     </div>
                 </div>
