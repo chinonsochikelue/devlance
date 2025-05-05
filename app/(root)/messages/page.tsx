@@ -10,15 +10,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatDistanceToNow } from "date-fns"
-import { Loader2, Search, Send } from "lucide-react"
+import { Loader2, Search, Send, Plus, Users, Settings, MoreVertical, Paperclip, Smile } from "lucide-react"
 import VerificationBadge from "@/components/verification-badge"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { debounce } from "lodash"
-import { useToast } from "@/hooks/use-toast"
 import { useSocket } from "@/lib/socket-context"
+import { debounce } from "lodash"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useToast } from "@/hooks/use-toast"
 import OnlineStatus from "@/components/message/online-status"
 import TypingIndicator from "@/components/message/typing-indicator"
+import EmojiPicker from "@/components/ui/emoji-picker"
 
 type Conversation = {
   _id: string
@@ -40,6 +48,13 @@ type Conversation = {
     status: "online" | "offline"
     lastActive?: string
   }
+  isGroup?: boolean
+  groupMembers?: Array<{
+    _id: string
+    name: string
+    username: string
+    profilePic?: string
+  }>
 }
 
 type Message = {
@@ -55,6 +70,25 @@ type Message = {
   recipient: string
   createdAt: string
   read: boolean
+  attachments?: Array<{
+    type: string
+    url: string
+  }>
+}
+
+type GroupChat = {
+  _id: string
+  name: string
+  description?: string
+  members: Array<{
+    _id: string
+    name: string
+    username: string
+    profilePic?: string
+  }>
+  createdBy: string
+  createdAt: string
+  updatedAt: string
 }
 
 export default function MessagesPage() {
@@ -70,7 +104,19 @@ export default function MessagesPage() {
   const [sendingMessage, setSendingMessage] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [activeTab, setActiveTab] = useState<"direct" | "groups">("direct")
+  const [showNewGroupDialog, setShowNewGroupDialog] = useState(false)
+  const [groupName, setGroupName] = useState("")
+  const [groupDescription, setGroupDescription] = useState("")
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchingUsers, setSearchingUsers] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const { toast } = useToast()
+  const [groupChats, setGroupChats] = useState<GroupChat[]>([])
+  const [selectedGroupChat, setSelectedGroupChat] = useState<GroupChat | null>(null)
+  const [attachment, setAttachment] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Debounced typing indicator
   const debouncedTypingIndicator = useRef(
@@ -85,7 +131,7 @@ export default function MessagesPage() {
   ).current
 
   useEffect(() => {
-  if (!loading && !user) {
+    if (!user) {
       router.push("/login")
       return
     }
@@ -96,7 +142,7 @@ export default function MessagesPage() {
         if (!res.ok) throw new Error("Failed to fetch conversations")
 
         const data = await res.json()
-        setConversations(data)
+        setConversations(data.filter((conv) => !conv.isGroup))
         setLoading(false)
       } catch (error) {
         console.error("Error fetching conversations:", error)
@@ -109,7 +155,20 @@ export default function MessagesPage() {
       }
     }
 
+    const fetchGroupChats = async () => {
+      try {
+        const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/messages/groups`)
+        if (!res.ok) throw new Error("Failed to fetch group chats")
+
+        const data = await res.json()
+        setGroupChats(data)
+      } catch (error) {
+        console.error("Error fetching group chats:", error)
+      }
+    }
+
     fetchConversations()
+    fetchGroupChats()
 
     // Set up socket event listeners
     if (socket) {
@@ -130,6 +189,16 @@ export default function MessagesPage() {
         updateConversationWithNewMessage(message)
       })
 
+      // Listen for group messages
+      socket.on("group_message", (message) => {
+        if (selectedGroupChat && message.groupId === selectedGroupChat._id) {
+          setMessages((prev) => [...prev, message])
+        }
+
+        // Update group chats list
+        updateGroupWithNewMessage(message)
+      })
+
       // Listen for message sent confirmation
       socket.on("message_sent", (message) => {
         // Update messages list with the confirmed message
@@ -144,6 +213,11 @@ export default function MessagesPage() {
       // Listen for conversation updates
       socket.on("update_conversations", () => {
         fetchConversations()
+      })
+
+      // Listen for group updates
+      socket.on("update_groups", () => {
+        fetchGroupChats()
       })
 
       // Listen for message errors
@@ -168,13 +242,15 @@ export default function MessagesPage() {
     return () => {
       if (socket) {
         socket.off("private_message")
+        socket.off("group_message")
         socket.off("message_sent")
         socket.off("update_conversations")
+        socket.off("update_groups")
         socket.off("message_error")
         socket.off("messages_read")
       }
     }
-  }, [user, router, socket, selectedUser, selectedConversation])
+  }, [user, router, socket, selectedUser, selectedConversation, selectedGroupChat])
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -236,9 +312,27 @@ export default function MessagesPage() {
     })
   }
 
+  const updateGroupWithNewMessage = (message: any) => {
+    setGroupChats((prev) => {
+      return prev.map((group) => {
+        if (group._id === message.groupId) {
+          return {
+            ...group,
+            lastMessage: {
+              text: message.text,
+              sender: message.sender.name,
+              createdAt: message.createdAt,
+            },
+          }
+        }
+        return group
+      })
+    })
+  }
+
   const fetchMessages = async (userId: string) => {
     try {
-      const res = await fetchWithAuth(`/api/messages/${userId}`)
+      const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/messages/${userId}`)
       if (!res.ok) throw new Error("Failed to fetch messages")
 
       const data = await res.json()
@@ -256,57 +350,131 @@ export default function MessagesPage() {
     }
   }
 
+  const fetchGroupMessages = async (groupId: string) => {
+    try {
+      const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/messages/groups/${groupId}`)
+      if (!res.ok) throw new Error("Failed to fetch group messages")
+
+      const data = await res.json()
+      setMessages(data.messages)
+    } catch (error) {
+      console.error("Error fetching group messages:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load group messages",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleSelectConversation = (conversation: Conversation) => {
     setSelectedConversation(conversation._id)
     setSelectedUser(conversation.user)
+    setSelectedGroupChat(null)
     fetchMessages(conversation.user._id)
+    setActiveTab("direct")
+  }
+
+  const handleSelectGroupChat = (group: GroupChat) => {
+    setSelectedGroupChat(group)
+    setSelectedUser(null)
+    setSelectedConversation(null)
+    fetchGroupMessages(group._id)
+    setActiveTab("groups")
   }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!selectedUser || !newMessage.trim()) return
+    if ((!selectedUser && !selectedGroupChat) || !newMessage.trim()) return
 
     setSendingMessage(true)
 
     try {
-      if (socket && isConnected) {
-        // Send via socket for real-time delivery
-        socket.emit("private_message", {
-          recipientId: selectedUser._id,
-          text: newMessage,
-        })
-
-        // Clear the input immediately for better UX
-        setNewMessage("")
-
-        // Stop typing indicator
-        debouncedTypingIndicator(false)
-      } else {
-        // Fallback to REST API if socket is not connected
-        const res = await fetchWithAuth("/api/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+      if (selectedUser) {
+        // Send direct message
+        if (socket && isConnected) {
+          // Send via socket for real-time delivery
+          socket.emit("private_message", {
             recipientId: selectedUser._id,
             text: newMessage,
-          }),
-        })
+            attachment: attachment
+              ? {
+                name: attachment.name,
+                type: attachment.type,
+                size: attachment.size,
+              }
+              : null,
+          })
 
-        if (!res.ok) throw new Error("Failed to send message")
+          // Clear the input immediately for better UX
+          setNewMessage("")
+          setAttachment(null)
 
-        const data = await res.json()
+          // Stop typing indicator
+          debouncedTypingIndicator(false)
+        } else {
+          // Fallback to REST API if socket is not connected
+          const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/messages`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              recipientId: selectedUser._id,
+              text: newMessage,
+            }),
+          })
 
-        // Add the new message to the messages list
-        setMessages((prev) => [...prev, data])
+          if (!res.ok) throw new Error("Failed to send message")
 
-        // Update the conversation list
-        updateConversationWithNewMessage(data)
+          const data = await res.json()
 
-        // Clear the input
-        setNewMessage("")
+          // Add the new message to the messages list
+          setMessages((prev) => [...prev, data])
+
+          // Update the conversation list
+          updateConversationWithNewMessage(data)
+
+          // Clear the input
+          setNewMessage("")
+          setAttachment(null)
+        }
+      } else if (selectedGroupChat) {
+        // Send group message
+        if (socket && isConnected) {
+          socket.emit("group_message", {
+            groupId: selectedGroupChat._id,
+            text: newMessage,
+            attachment: attachment
+              ? {
+                name: attachment.name,
+                type: attachment.type,
+                size: attachment.size,
+              }
+              : null,
+          })
+
+          setNewMessage("")
+          setAttachment(null)
+        } else {
+          const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/messages/groups/${selectedGroupChat._id}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: newMessage,
+            }),
+          })
+
+          if (!res.ok) throw new Error("Failed to send group message")
+
+          const data = await res.json()
+          setMessages((prev) => [...prev, data])
+          setNewMessage("")
+          setAttachment(null)
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error)
@@ -329,6 +497,104 @@ export default function MessagesPage() {
     }
   }
 
+  const handleEmojiSelect = (emoji: string) => {
+    setNewMessage((prev) => prev + emoji)
+    setShowEmojiPicker(false)
+  }
+
+  const handleAttachmentClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setAttachment(e.target.files[0])
+    }
+  }
+
+  const handleCreateGroup = async () => {
+    if (!groupName || selectedUsers.length === 0) {
+      toast({
+        title: "Error",
+        description: "Group name and at least one member are required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/messages/groups`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: groupName,
+          description: groupDescription,
+          members: selectedUsers,
+        }),
+      })
+
+      if (!res.ok) throw new Error("Failed to create group")
+
+      const newGroup = await res.json()
+      setGroupChats((prev) => [newGroup, ...prev])
+      setShowNewGroupDialog(false)
+      setGroupName("")
+      setGroupDescription("")
+      setSelectedUsers([])
+
+      toast({
+        title: "Success",
+        description: "Group chat created successfully",
+      })
+
+      // Select the new group
+      handleSelectGroupChat(newGroup)
+    } catch (error) {
+      console.error("Error creating group:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create group chat",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSearchUsers = async (query: string) => {
+    if (!query) {
+      setSearchResults([])
+      return
+    }
+
+    setSearchingUsers(true)
+    try {
+      const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/search/users?q=${query}`)
+      if (!res.ok) throw new Error("Failed to search users")
+
+      const data = await res.json()
+      setSearchResults(data.users)
+    } catch (error) {
+      console.error("Error searching users:", error)
+    } finally {
+      setSearchingUsers(false)
+    }
+  }
+
+  const debouncedSearch = useRef(
+    debounce((query: string) => {
+      handleSearchUsers(query)
+    }, 300),
+  ).current
+
+  const handleUserSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    debouncedSearch(e.target.value)
+  }
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUsers((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]))
+  }
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -347,14 +613,22 @@ export default function MessagesPage() {
       conv.user.username?.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
+  const filteredGroupChats = groupChats.filter((group) => group.name.toLowerCase().includes(searchQuery.toLowerCase()))
+
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col md:flex-row">
       {/* Conversations sidebar */}
       <div className="w-full border-r md:w-80">
         <div className="flex flex-col h-full">
           <div className="p-4 border-b">
-            <h1 className="text-xl font-bold">Messages</h1>
-            <div className="relative mt-2">
+            <div className="flex items-center justify-between mb-2">
+              <h1 className="text-xl font-bold">Messages</h1>
+              <Button variant="ghost" size="icon" onClick={() => setShowNewGroupDialog(true)}>
+                <Plus className="h-4 w-4" />
+                <span className="sr-only">New Group</span>
+              </Button>
+            </div>
+            <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
@@ -366,93 +640,189 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto">
-            {loading ? (
-              <div className="flex items-center justify-center h-32">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredConversations.length > 0 ? (
-              <div className="divide-y">
-                {filteredConversations.map((conversation) => (
-                  <div
-                    key={conversation._id}
-                    className={`p-4 cursor-pointer hover:bg-muted/50 ${selectedConversation === conversation._id ? "bg-muted" : ""
-                      }`}
-                    onClick={() => handleSelectConversation(conversation)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="relative">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage
-                            src={conversation.user.profilePic || "/placeholder.svg"}
-                            alt={conversation.user.name}
-                          />
-                          <AvatarFallback>{getInitials(conversation.user.name)}</AvatarFallback>
-                        </Avatar>
-                        <OnlineStatus userId={conversation.user._id} className="absolute -bottom-0.5 -right-0.5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <span className="font-medium truncate">{conversation.user.name}</span>
-                            {conversation.user.verified && <VerificationBadge size="sm" />}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {formatMessageTime(conversation.updatedAt)}
-                          </span>
+          <Tabs
+            defaultValue="direct"
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as "direct" | "groups")}
+          >
+            <div className="px-4 pt-2">
+              <TabsList className="w-full">
+                <TabsTrigger value="direct" className="flex-1">
+                  Direct
+                </TabsTrigger>
+                <TabsTrigger value="groups" className="flex-1">
+                  Groups
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="direct" className="flex-1 overflow-auto">
+              {loading ? (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredConversations.length > 0 ? (
+                <div className="divide-y">
+                  {filteredConversations.map((conversation) => (
+                    <div
+                      key={conversation._id}
+                      className={`p-4 cursor-pointer hover:bg-muted/50 ${selectedConversation === conversation._id ? "bg-muted" : ""
+                        }`}
+                      onClick={() => handleSelectConversation(conversation)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="relative">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage
+                              src={conversation.user.profilePic || "/placeholder.svg"}
+                              alt={conversation.user.name}
+                            />
+                            <AvatarFallback>{getInitials(conversation.user.name)}</AvatarFallback>
+                          </Avatar>
+                          <OnlineStatus userId={conversation.user._id} className="absolute -bottom-0.5 -right-0.5" />
                         </div>
-                        <p className="text-sm text-muted-foreground truncate">{conversation.lastMessage?.text}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                              <span className="font-medium truncate">{conversation.user.name}</span>
+                              {conversation.user.verified && <VerificationBadge size="sm" />}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {formatMessageTime(conversation.updatedAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">{conversation.lastMessage?.text}</p>
+                        </div>
+                        {conversation.unreadCount > 0 && (
+                          <Badge variant="default" className="rounded-full px-2">
+                            {conversation.unreadCount}
+                          </Badge>
+                        )}
                       </div>
-                      {conversation.unreadCount > 0 && (
-                        <Badge variant="default" className="rounded-full px-2">
-                          {conversation.unreadCount}
-                        </Badge>
-                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-8 text-center">
-                <p className="text-muted-foreground">No conversations yet</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Start a conversation by visiting a user&apos;s profile
-                </p>
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center">
+                  <p className="text-muted-foreground">No conversations yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Start a conversation by visiting a user&apos;s profile
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="groups" className="flex-1 overflow-auto">
+              {filteredGroupChats.length > 0 ? (
+                <div className="divide-y">
+                  {filteredGroupChats.map((group) => (
+                    <div
+                      key={group._id}
+                      className={`p-4 cursor-pointer hover:bg-muted/50 ${selectedGroupChat?._id === group._id ? "bg-muted" : ""
+                        }`}
+                      onClick={() => handleSelectGroupChat(group)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="relative">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="bg-primary text-primary-foreground">
+                              <Users className="h-5 w-5" />
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium truncate">{group.name}</span>
+                            <span className="text-xs text-muted-foreground">{formatMessageTime(group.updatedAt)}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">{group.members.length} members</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center">
+                  <p className="text-muted-foreground">No group chats yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">Create a new group chat to get started</p>
+                  <Button variant="outline" className="mt-4" onClick={() => setShowNewGroupDialog(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Group Chat
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
       {/* Messages area */}
       <div className="flex-1 flex flex-col">
-        {selectedUser ? (
+        {selectedUser || selectedGroupChat ? (
           <>
             {/* Header */}
             <div className="p-4 border-b flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Link href={`/profile/${selectedUser._id}`}>
+                {selectedUser ? (
+                  <>
+                    <div className="relative">
+                      <Link href={`/profile/${selectedUser._id}`}>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={selectedUser.profilePic || "/placeholder.svg"} alt={selectedUser.name} />
+                          <AvatarFallback>{getInitials(selectedUser.name)}</AvatarFallback>
+                        </Avatar>
+                      </Link>
+                      <OnlineStatus userId={selectedUser._id} className="absolute -bottom-0.5 -right-0.5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <Link href={`/profile/${selectedUser._id}`} className="font-medium hover:underline">
+                          {selectedUser.name}
+                        </Link>
+                        {selectedUser.verified && <VerificationBadge size="sm" />}
+                      </div>
+                      <p className="text-xs text-muted-foreground">@{selectedUser.username}</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={selectedUser.profilePic || "/placeholder.svg"} alt={selectedUser.name} />
-                      <AvatarFallback>{getInitials(selectedUser.name)}</AvatarFallback>
+                      <AvatarFallback className="bg-primary text-primary-foreground">
+                        <Users className="h-4 w-4" />
+                      </AvatarFallback>
                     </Avatar>
-                  </Link>
-                  <OnlineStatus userId={selectedUser._id} className="absolute -bottom-0.5 -right-0.5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1">
-                    <Link href={`/profile/${selectedUser._id}`} className="font-medium hover:underline">
-                      {selectedUser.name}
-                    </Link>
-                    {selectedUser.verified && <VerificationBadge size="sm" />}
-                  </div>
-                  <p className="text-xs text-muted-foreground">@{selectedUser.username}</p>
-                </div>
+                    <div>
+                      <p className="font-medium">{selectedGroupChat?.name}</p>
+                      <p className="text-xs text-muted-foreground">{selectedGroupChat?.members.length} members</p>
+                    </div>
+                  </>
+                )}
               </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href={`/profile/${selectedUser._id}`}>View Profile</Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                {selectedUser ? (
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href={`/profile/${selectedUser._id}`}>View Profile</Link>
+                  </Button>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>
+                        <Users className="h-4 w-4 mr-2" />
+                        View Members
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Group Settings
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </div>
 
             {/* Messages */}
@@ -474,13 +844,46 @@ export default function MessagesPage() {
                           </Avatar>
                         )}
                         <div>
+                          {!isOwnMessage && selectedGroupChat && (
+                            <p className="text-xs font-medium mb-1">{message.sender.name}</p>
+                          )}
                           <div
                             className={`rounded-lg p-3 ${isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
                               }`}
                           >
                             <p className="text-sm">{message.text}</p>
+                            {message.attachments && message.attachments.length > 0 && (
+                              <div className="mt-2">
+                                {message.attachments.map((attachment, index) => (
+                                  <div key={index} className="mt-2">
+                                    {attachment.type.startsWith("image/") ? (
+                                      <img
+                                        src={attachment.url || "/placeholder.svg"}
+                                        alt="Attachment"
+                                        className="max-w-full rounded-md max-h-60 object-contain"
+                                      />
+                                    ) : (
+                                      <a
+                                        href={attachment.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 text-xs underline"
+                                      >
+                                        <Paperclip className="h-3 w-3" />
+                                        Attachment
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">{formatMessageTime(message.createdAt)}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground">{formatMessageTime(message.createdAt)}</p>
+                            {isOwnMessage && message.read && (
+                              <span className="text-xs text-muted-foreground">Read</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -495,36 +898,138 @@ export default function MessagesPage() {
             </div>
 
             {/* Typing indicator */}
-            <div className="px-4">
-              <TypingIndicator userId={selectedUser._id} />
-            </div>
+            <div className="px-4">{selectedUser && <TypingIndicator userId={selectedUser._id} />}</div>
 
             {/* Message input */}
             <div className="p-4 border-t">
-              <form onSubmit={handleSendMessage} className="flex gap-2">
+              {attachment && (
+                <div className="mb-2 p-2 bg-muted rounded-md flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Paperclip className="h-4 w-4" />
+                    <span className="truncate max-w-[200px]">{attachment.name}</span>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setAttachment(null)}>
+                    <span className="sr-only">Remove attachment</span>X
+                  </Button>
+                </div>
+              )}
+              <form onSubmit={handleSendMessage} className="relative">
                 <Input
+                  type="text"
                   placeholder="Type a message..."
                   value={newMessage}
                   onChange={handleInputChange}
-                  disabled={sendingMessage}
-                  className="flex-1"
+                  className="pr-12"
                 />
-                <Button type="submit" disabled={!newMessage.trim() || sendingMessage}>
-                  {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span className="sr-only">Send</span>
-                </Button>
+                <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleAttachmentClick}
+                    disabled={sendingMessage}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                    <span className="sr-only">Attach file</span>
+                  </Button>
+                  <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="ghost" size="icon">
+                        <Smile className="h-4 w-4" />
+                        <span className="sr-only">Pick emoji</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 border-none shadow-none">
+                      <EmojiPicker onEmojiSelect={handleEmojiSelect} />
+                    </PopoverContent>
+                  </Popover>
+                  <Button type="submit" variant="ghost" size="icon" disabled={sendingMessage}>
+                    {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    <span className="sr-only">Send message</span>
+                  </Button>
+                </div>
               </form>
             </div>
           </>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <h2 className="text-xl font-medium">Select a conversation</h2>
-              <p className="text-muted-foreground mt-1">Choose a conversation from the sidebar to start messaging</p>
-            </div>
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-muted-foreground">Select a conversation to start messaging</p>
           </div>
         )}
       </div>
+
+      {/* New Group Dialog */}
+      <Dialog open={showNewGroupDialog} onOpenChange={setShowNewGroupDialog}>
+        <DialogTrigger asChild>
+          <Button variant="outline">Create Group</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Group Chat</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="name" className="text-right">
+                Name
+              </label>
+              <Input
+                id="name"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="description" className="text-right">
+                Description
+              </label>
+              <Textarea
+                id="description"
+                value={groupDescription}
+                onChange={(e) => setGroupDescription(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="members" className="text-right">
+                Members
+              </label>
+              <div className="col-span-3">
+                <Input type="search" placeholder="Search users..." onChange={handleUserSearchChange} />
+                {searchingUsers ? (
+                  <div className="flex items-center justify-center h-24">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  <ScrollArea className="h-48 w-full rounded-md border">
+                    {searchResults.map((user) => (
+                      <div key={user._id} className="p-2 hover:bg-muted cursor-pointer flex items-center gap-2">
+                        <Checkbox
+                          id={`user-${user._id}`}
+                          checked={selectedUsers.includes(user._id)}
+                          onCheckedChange={() => toggleUserSelection(user._id)}
+                        />
+                        <label htmlFor={`user-${user._id}`} className="w-full flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={user.profilePic || "/placeholder.svg"} alt={user.name} />
+                              <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                            </Avatar>
+                            <span>{user.name}</span>
+                          </div>
+                          <VerificationBadge size="sm" />
+                        </label>
+                      </div>
+                    ))}
+                  </ScrollArea>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <Button onClick={handleCreateGroup}>Create Group</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

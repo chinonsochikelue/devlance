@@ -39,6 +39,7 @@ import { format } from "date-fns"
 import SkillEndorsement from "@/components/profile/skill-endorsement"
 import SkillEndorsements from "@/components/profile/skill-endorsement"
 import ResumeExport from "@/components/profile/resume-export"
+import MessageButton from "@/components/message/message-button"
 
 // Dynamically import with SSR disabled
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false })
@@ -477,10 +478,11 @@ export default function UserData() {
                       </div>
                     )}
                     <Button className="w-full">Hire Me</Button>
-                    <Button variant="outline" className="w-full">
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      Contact
-                    </Button>
+                    {currentUser && currentUser._id !== user._id && (
+                      <>
+                        <MessageButton userId={user._id} username={user.username} />
+                      </>
+                    )}
                     {/* Resume Export */}
                     {(isOwnProfile || currentUser) && (
                       <div className="mt-4">

@@ -10,6 +10,7 @@ interface SocketContextType {
   isConnected: boolean
   onlineUsers: Map<string, boolean>
   typingUsers: Map<string, boolean>
+  groupTypingUsers: Map<string, Set<string>>
 }
 
 const SocketContext = createContext<SocketContextType>({
@@ -17,6 +18,7 @@ const SocketContext = createContext<SocketContextType>({
   isConnected: false,
   onlineUsers: new Map(),
   typingUsers: new Map(),
+  groupTypingUsers: new Map(),
 })
 
 export const useSocket = () => useContext(SocketContext)
@@ -26,14 +28,16 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isConnected, setIsConnected] = useState(false)
   const [onlineUsers, setOnlineUsers] = useState<Map<string, boolean>>(new Map())
   const [typingUsers, setTypingUsers] = useState<Map<string, boolean>>(new Map())
-  const { user, token } = useAuth()
+  const [groupTypingUsers, setGroupTypingUsers] = useState<Map<string, Set<string>>>(new Map())
+  const { user, isAuthenticated } = useAuth()
 
   useEffect(() => {
-    if (!user || !token) return
+    if (!user || !isAuthenticated) return
 
     // Initialize socket connection
     const socketInstance = io("http://localhost:5000", {
-      auth: { token },
+      auth: { userId: user._id },
+      withCredentials: true,
     })
 
     // Set up event listeners
@@ -69,16 +73,33 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       })
     })
 
+    // Handle group typing indicators
+    socketInstance.on("user_group_typing", ({ groupId, userId, username, isTyping }) => {
+      setGroupTypingUsers((prev) => {
+        const newMap = new Map(prev)
+        const typingSet = newMap.get(groupId) || new Set()
+
+        if (isTyping) {
+          typingSet.add(username)
+        } else {
+          typingSet.delete(username)
+        }
+
+        newMap.set(groupId, typingSet)
+        return newMap
+      })
+    })
+
     setSocket(socketInstance)
 
     // Cleanup on unmount
     return () => {
       socketInstance.disconnect()
     }
-  }, [user, token])
+  }, [user, isAuthenticated])
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected, onlineUsers, typingUsers }}>
+    <SocketContext.Provider value={{ socket, isConnected, onlineUsers, typingUsers, groupTypingUsers }}>
       {children}
     </SocketContext.Provider>
   )

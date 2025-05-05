@@ -9,12 +9,18 @@ import {
   HomeIcon,
   LogOut,
   MailIcon,
+  MessageSquare,
+  ShieldUser,
   UserCircle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { logout, useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import UnreadMessageBadge from '../message/unread-message-badge';
+import NotificationsDropdown from './notifications-dropdown';
+import { Button } from '../ui/button';
+import { ThemeToggle } from '../theme-toggle';
 
 function SideBar() {
   const { user, logout: logoutUser } = useAuth();
@@ -50,13 +56,32 @@ function SideBar() {
       <Logo />
       <SideBarRow Icon={HomeIcon} title="Home" />
       <SideBarRow Icon={Hash} title="Explore" />
-      <SideBarRow Icon={BellIcon} title="Notifications" />
-      <SideBarRow Icon={MailIcon} title="Messages" />
+      <NotificationsDropdown>
+        <SideBarRow Icon={BellIcon} title="Notifications" />
+      </NotificationsDropdown>
+      <Link href="/messages">
+        <div className="relative flex items-center">
+          <SideBarRow Icon={MessageSquare} title="Messages" />
+          <UnreadMessageBadge />
+        </div>
+      </Link>
+
       {user && (
         <Link href={`/profile/${id}`}>
           <SideBarRow Icon={UserCircle} title={user?.name || 'Profile'} />
         </Link>
       )}
+      {user?.isAdmin && (
+        <>
+          <Link href="/admin">
+            <SideBarRow Icon={ShieldUser} title='Admin Dashboard' />
+          </Link>
+        </>
+      )}
+
+      <div className="flex max-w-fit items-center space-x-2 px-4 py-3 cursor-pointer rounded-fulltransition-all duration-200" >
+        <ThemeToggle />
+      </div>
 
       <div className="mt-36">
         <SideBarRow Icon={LogOut} title="Log Out" onClick={handleLogout} />

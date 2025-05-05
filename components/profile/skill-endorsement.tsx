@@ -76,7 +76,7 @@ export default function SkillEndorsements({ userId, userSkills, isOwnProfile = f
         console.error("Error fetching endorsements:", error)
         toast({
           title: "Error",
-          description: error.message || "Failed to fetch endorsements",
+          description:"Failed to fetch endorsements",
           variant: "destructive",
         })
       } finally {
@@ -133,7 +133,7 @@ export default function SkillEndorsements({ userId, userSkills, isOwnProfile = f
       console.error("Error endorsing skill:", error)
       toast({
         title: "Error",
-        description: error.message || "Failed to endorse skill",
+        description:"Failed to endorse skill",
         variant: "destructive",
       })
     } finally {

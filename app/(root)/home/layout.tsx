@@ -12,6 +12,7 @@ export default async function HomeLayout({
 }) {
     const cookieStore = cookies()
     const token = await cookieStore.get("jwt")
+    console.log(token)
 
     if (token) {
         redirect("/home")

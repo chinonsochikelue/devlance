@@ -1,13 +1,16 @@
 'use client';
 import React, { useState, useRef } from 'react';
 import { Button } from '../ui/button';
-import { CalendarCog, Image, MapPin, Search, Smile, X } from 'lucide-react';
+import { CalendarCog, Image, MapPin, Search, Smile, Sparkles, Wand2, X } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
 import { motion, AnimatePresence } from 'framer-motion';
 import Joi from 'joi';
 import { Input } from '../ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
+import AIContentAnalysis from '../pings/ai-content-analysis';
+import AIContentEnhancer from '../pings/ai-content-enhancer';
+import AIContentSuggestions from '../pings/ai-content-suggestions';
 
 
 type Post = {
@@ -38,8 +41,8 @@ interface CreatePostFormProps {
 }
 
 const pingSchema = Joi.object({
-  input: Joi.string().max(280).required().messages({
-    'string.max': 'Pings can only be 280 characters max – same as Twitter!',
+  input: Joi.string().max(480).required().messages({
+    'string.max': 'Pings can only be 480 characters max',
     'string.empty': 'Ping cannot be empty',
   }),
 });
@@ -53,6 +56,9 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState<string | ArrayBuffer | null>(null);
   const { toast } = useToast();
+  const [showAIAnalysis, setShowAIAnalysis] = useState(false)
+  const [showAIEnhancer, setShowAIEnhancer] = useState(false)
+  const [showAISuggestions, setShowAISuggestions] = useState(false)
   const [loading, setLoading] = useState(false);
 
   const handleImageClick = () => fileInputRef.current?.click();
@@ -125,6 +131,9 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
       setImageUrl(null);
       setIsFocused(false);
       setError(null);
+      setShowAIAnalysis(false)
+      setShowAIEnhancer(false)
+      setShowAISuggestions(false)
 
       toast({
         title: 'Ping posted!',
@@ -141,6 +150,17 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
       setLoading(false);
     }
   };
+
+
+  const handleEnhancedContent = (enhancedText: string) => {
+    setInput(enhancedText)
+    setShowAIEnhancer(false)
+  }
+
+  const handleSelectIdea = (idea: string) => {
+    setInput(idea)
+    setShowAISuggestions(false)
+  }
 
   return (
     <>
@@ -171,9 +191,9 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
         <div className="flex flex-1 pl-2">
           <form className="flex flex-1 flex-col" onSubmit={handleSubmit}>
             <motion.div
-              initial={{ height: '6rem' }}
+              initial={{ height: '1rem' }}
               animate={{
-                height: isFocused ? '10rem' : '6rem',
+                height: isFocused ? '10rem' : '3rem',
                 boxShadow: isFocused
                   ? '0 0 10px rgba(29, 155, 240, 0.7)'
                   : '0 0 0 rgba(0,0,0,0)',
@@ -188,7 +208,7 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
                 onBlur={() => input === '' && setIsFocused(false)}
                 onChange={(e) => {
                   const value = e.target.value;
-                  if (value.length <= 280) {
+                  if (value.length <= 480) {
                     setInput(value);
                     if (error) setError(null);
                   }
@@ -223,7 +243,7 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
             )}
 
             <div className="text-right text-xs text-gray-500 mt-1 mr-1">
-              {input.length}/280
+              {input.length}/480
             </div>
 
             {imageUrl && (
@@ -246,7 +266,13 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
                 />
               </div>
             )}
+            {showAIAnalysis && input.trim().length > 10 && <AIContentAnalysis text={input} />}
 
+            {showAIEnhancer && input.trim().length > 10 && (
+              <AIContentEnhancer text={input} onEnhanced={handleEnhancedContent} />
+            )}
+
+            {showAISuggestions && <AIContentSuggestions onSelectIdea={handleSelectIdea} />}
             <div className="w-full md:flex sm:flex-col md:flex-row items-center justify-between space-x-2 mt-5">
               <motion.div
                 className="flex flex-1 items-center justify-between space-x-4 text-[#1d9bf0] text-lg"
@@ -286,13 +312,12 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="mr-1"
                     >
                       <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
                       <circle cx="9" cy="9" r="2" />
                       <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                     </svg>
-                    Media
+                    <span className="group-hover:text-blue-500 ml-2 hidden md:inline-flex text-base font-light lg:text-xl">Media</span>
                   </Button>
                 </motion.div>
 
@@ -323,14 +348,13 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="mr-1"
                     >
                       <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5" />
                       <path d="M8.5 8.5v.01" />
                       <path d="M16 15.5v.01" />
                       <path d="M12 12v.01" />
                     </svg>
-                    GIF
+                    <span className="group-hover:text-blue-500 ml-2 hidden md:inline-flex text-base font-light lg:text-xl">GIF</span>
                   </Button>
                 </motion.div>
 
@@ -367,11 +391,54 @@ function PingBox({ onPostCreated }: CreatePostFormProps) {
                       <path d="M21 12.1H3" />
                       <path d="M15.1 18H3" />
                     </svg>
-                    Poll
+                    <span className="group-hover:text-blue-500 ml-2 hidden md:inline-flex text-base font-light lg:text-xl">Poll</span>
                   </Button>
                 </motion.div>
               </motion.div>
 
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setShowAIAnalysis(!showAIAnalysis)
+                  setShowAIEnhancer(false)
+                  setShowAISuggestions(false)
+                }}
+                className={showAIAnalysis ? "text-primary" : ""}
+              >
+                <Sparkles className="h-5 w-5" />
+                <span className="sr-only">AI Analysis</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setShowAIEnhancer(!showAIEnhancer)
+                  setShowAIAnalysis(false)
+                  setShowAISuggestions(false)
+                }}
+                className={showAIEnhancer ? "text-primary" : ""}
+              >
+                <Wand2 className="h-5 w-5" />
+                <span className="sr-only">AI Enhance</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setShowAISuggestions(!showAISuggestions)
+                  setShowAIAnalysis(false)
+                  setShowAIEnhancer(false)
+                }}
+                className={`text-xs ${showAISuggestions ? "text-primary" : ""}`}
+              >
+                Ideas
+              </Button>
               <Button
                 type="submit"
                 className="bg-[#1d9bf0] font-bold text-white px-5 mt-4 md:mt-0 disabled:cursor-not-allowed"

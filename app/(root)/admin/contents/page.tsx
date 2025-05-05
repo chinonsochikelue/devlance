@@ -4,29 +4,52 @@ import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth"
 import { fetchWithAuth } from "@/lib/api"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Pagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination"
+import { Loader2, AlertTriangle, CheckCircle, Clock } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
-import { Pagination } from "@/components/ui/pagination"
-import { Loader2, CheckCircle, XCircle, Flag, MessageSquare, FileText } from "lucide-react"
-import { format } from "date-fns"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { formatDistanceToNow } from "date-fns"
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart as ReChartsPieChart,
+  Pie,
+  Cell,
+} from "recharts"
 import { useToast } from "@/hooks/use-toast"
 
+// Define types
 type ModerationItem = {
   _id: string
   content: string
-  contentModel: "Ping" | "Message"
   contentText: string
+  contentModel: string
   flaggedBy: {
     _id: string
     name: string
     username: string
-  } | null
+  }
+  contentOwner: {
+    _id: string
+    name: string
+    username: string
+    profilePic?: string
+  }
   flaggedReason: string
-  aiScore: number
-  aiCategories: {
+  status: "pending" | "approved" | "rejected"
+  createdAt: string
+  aiScore?: number
+  aiCategories?: {
     sexual: number
     harassment: number
     hate: number
@@ -34,14 +57,6 @@ type ModerationItem = {
     selfHarm: number
     spam: number
   }
-  status: "pending" | "approved" | "rejected"
-  contentOwner: {
-    _id: string
-    name: string
-    username: string
-    profilePic: string
-  }
-  createdAt: string
 }
 
 type ModerationStats = {
@@ -58,73 +73,71 @@ type ModerationStats = {
   reasonStats: {
     [key: string]: number
   }
-  recentActivity: Array<{
-    _id: string
-    status: string
-    contentModel: string
-    updatedAt: string
-    contentOwner: {
-      name: string
-      username: string
-    }
-    moderatedBy: {
-      name: string
-      username: string
-    }
-  }>
+  recentActivity: Array<any>
 }
+
+// Colors for charts
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"]
 
 export default function ContentModerationPage() {
   const { user } = useAuth()
   const router = useRouter()
   const [moderationItems, setModerationItems] = useState<ModerationItem[]>([])
-  const [stats, setStats] = useState<ModerationStats | null>(null)
+  const [moderationStats, setModerationStats] = useState<ModerationStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [currentStatus, setCurrentStatus] = useState<"pending" | "approved" | "rejected">("pending")
-  const [page, setPage] = useState(1)
-  const { toast } = useToast()
+  const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [moderationNotes, setModerationNotes] = useState("")
-  const [processingIds, setProcessingIds] = useState<string[]>([])
+  const [currentStatus, setCurrentStatus] = useState<"pending" | "approved" | "rejected">("pending")
+  const [moderationNote, setModerationNote] = useState("")
+  const [processingId, setProcessingId] = useState<string | null>(null)
+  const { toast } = useToast()
+  const [timeRange, setTimeRange] = useState("7") // Default to 7 days
 
   useEffect(() => {
-    if (!loading && !user?.isAdmin) {
-      router.push("/home")
+    if (!user?.isAdmin) {
+      router.push("/feed")
       return
     }
 
-    const fetchModerationData = async () => {
-      setLoading(true)
-      try {
-        // Fetch moderation queue
-        const queueRes = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/moderation/queue?status=${currentStatus}&page=${page}`)
-        if (!queueRes.ok) throw new Error("Failed to fetch moderation queue")
-        const queueData = await queueRes.json()
-        setModerationItems(queueData.items)
-        setTotalPages(queueData.pages)
+    fetchModerationQueue()
+    fetchModerationStats()
+  }, [user, router, currentPage, currentStatus])
 
-        // Fetch moderation stats
-        const statsRes = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/moderation/stats`)
-        if (!statsRes.ok) throw new Error("Failed to fetch moderation stats")
-        const statsData = await statsRes.json()
-        setStats(statsData)
-      } catch (error) {
-        console.error("Error fetching moderation data:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load moderation data",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
+  const fetchModerationQueue = async () => {
+    setLoading(true)
+    try {
+      const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/moderation/queue?status=${currentStatus}&page=${currentPage}`)
+      if (!res.ok) throw new Error("Failed to fetch moderation queue")
+
+      const data = await res.json()
+      setModerationItems(data.items)
+      setTotalPages(data.pages)
+      setLoading(false)
+    } catch (error) {
+      console.error("Error fetching moderation queue:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load moderation queue",
+        variant: "destructive",
+      })
+      setLoading(false)
     }
+  }
 
-    fetchModerationData()
-  }, [user, router, currentStatus, page])
+  const fetchModerationStats = async () => {
+    try {
+      const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/moderation/stats`)
+      if (!res.ok) throw new Error("Failed to fetch moderation stats")
 
-  const handleModerate = async (id: string, status: "approved" | "rejected") => {
-    setProcessingIds((prev) => [...prev, id])
+      const data = await res.json()
+      setModerationStats(data)
+    } catch (error) {
+      console.error("Error fetching moderation stats:", error)
+    }
+  }
+
+  const handleModerateContent = async (id: string, status: "approved" | "rejected") => {
+    setProcessingId(id)
     try {
       const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/moderation/${id}`, {
         method: "PUT",
@@ -133,30 +146,21 @@ export default function ContentModerationPage() {
         },
         body: JSON.stringify({
           status,
-          notes: moderationNotes,
+          notes: moderationNote,
         }),
       })
 
       if (!res.ok) throw new Error("Failed to moderate content")
 
-      // Remove the moderated item from the list
-      setModerationItems((prev) => prev.filter((item) => item._id !== id))
-
-      // Update stats
-      if (stats) {
-        const newStats = { ...stats }
-        newStats.statusStats[currentStatus] -= 1
-        newStats.statusStats[status] += 1
-        setStats(newStats)
-      }
-
       toast({
         title: "Success",
-        description: `Content has been ${status === "approved" ? "approved" : "rejected"}`,
+        description: `Content ${status === "approved" ? "approved" : "rejected"} successfully`,
       })
 
-      // Reset moderation notes
-      setModerationNotes("")
+      // Refresh the queue and stats
+      fetchModerationQueue()
+      fetchModerationStats()
+      setModerationNote("")
     } catch (error) {
       console.error("Error moderating content:", error)
       toast({
@@ -165,12 +169,51 @@ export default function ContentModerationPage() {
         variant: "destructive",
       })
     } finally {
-      setProcessingIds((prev) => prev.filter((itemId) => itemId !== id))
+      setProcessingId(null)
     }
   }
 
-  const formatReason = (reason: string) => {
-    return reason.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())
+  const formatDate = (dateString: string) => {
+    return formatDistanceToNow(new Date(dateString), { addSuffix: true })
+  }
+
+  // Prepare data for charts
+  const prepareStatusChartData = () => {
+    if (!moderationStats) return []
+    return [
+      { name: "Pending", value: moderationStats.statusStats.pending },
+      { name: "Approved", value: moderationStats.statusStats.approved },
+      { name: "Rejected", value: moderationStats.statusStats.rejected },
+    ]
+  }
+
+  const prepareContentTypeChartData = () => {
+    if (!moderationStats) return []
+    return [
+      { name: "Posts", value: moderationStats.contentStats.ping },
+      { name: "Messages", value: moderationStats.contentStats.message },
+    ]
+  }
+
+  const prepareReasonChartData = () => {
+    if (!moderationStats) return []
+    return Object.entries(moderationStats.reasonStats).map(([reason, count]) => ({
+      name: reason.replace("_", " "),
+      value: count,
+    }))
+  }
+
+  // Generate AI category chart data for a specific moderation item
+  const generateAICategoryData = (item: ModerationItem) => {
+    if (!item.aiCategories) return []
+    return [
+      { name: "Sexual", value: item.aiCategories.sexual * 100 },
+      { name: "Harassment", value: item.aiCategories.harassment * 100 },
+      { name: "Hate", value: item.aiCategories.hate * 100 },
+      { name: "Violence", value: item.aiCategories.violence * 100 },
+      { name: "Self-Harm", value: item.aiCategories.selfHarm * 100 },
+      { name: "Spam", value: item.aiCategories.spam * 100 },
+    ]
   }
 
   if (!user?.isAdmin) {
@@ -186,222 +229,137 @@ export default function ContentModerationPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <div className="md:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>Moderation Stats</CardTitle>
-              <CardDescription>Overview of moderation activity</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {stats ? (
-                <>
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Status</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="flex flex-col items-center p-2 bg-muted rounded-md">
-                        <span className="text-amber-500 font-bold text-xl">{stats.statusStats.pending}</span>
-                        <span className="text-xs">Pending</span>
-                      </div>
-                      <div className="flex flex-col items-center p-2 bg-muted rounded-md">
-                        <span className="text-green-500 font-bold text-xl">{stats.statusStats.approved}</span>
-                        <span className="text-xs">Approved</span>
-                      </div>
-                      <div className="flex flex-col items-center p-2 bg-muted rounded-md">
-                        <span className="text-red-500 font-bold text-xl">{stats.statusStats.rejected}</span>
-                        <span className="text-xs">Rejected</span>
-                      </div>
-                    </div>
-                  </div>
+      <Tabs defaultValue="queue">
+        <TabsList className="mb-6">
+          <TabsTrigger value="queue">Moderation Queue</TabsTrigger>
+          <TabsTrigger value="stats">Moderation Stats</TabsTrigger>
+          <TabsTrigger value="charts">Analytics</TabsTrigger>
+        </TabsList>
 
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Content Type</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col items-center p-2 bg-muted rounded-md">
-                        <span className="font-bold text-xl">{stats.contentStats.ping}</span>
-                        <span className="text-xs">Posts</span>
-                      </div>
-                      <div className="flex flex-col items-center p-2 bg-muted rounded-md">
-                        <span className="font-bold text-xl">{stats.contentStats.message}</span>
-                        <span className="text-xs">Messages</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Flag Reasons</h3>
-                    <div className="space-y-2">
-                      {Object.entries(stats.reasonStats).map(([reason, count]) => (
-                        <div key={reason} className="flex justify-between items-center">
-                          <span className="text-sm">{formatReason(reason)}</span>
-                          <Badge variant="outline">{count}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Recent Activity</h3>
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {stats.recentActivity.map((activity) => (
-                        <div key={activity._id} className="text-xs p-2 bg-muted rounded-md">
-                          <div className="flex justify-between">
-                            <span className="font-medium">{activity.contentOwner.name}</span>
-                            <Badge
-                              variant={activity.status === "approved" ? "outline" : "destructive"}
-                              className="text-[10px] h-4"
-                            >
-                              {activity.status}
-                            </Badge>
-                          </div>
-                          <div className="text-muted-foreground mt-1">
-                            {activity.contentModel} moderated by {activity.moderatedBy?.name || "System"}
-                          </div>
-                          <div className="text-muted-foreground mt-1">
-                            {format(new Date(activity.updatedAt), "MMM d, yyyy")}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-center py-6">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="md:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Moderation Queue</CardTitle>
-              <Tabs
-                defaultValue="pending"
-                className="w-full"
-                onValueChange={(value) => {
-                  setCurrentStatus(value as "pending" | "approved" | "rejected")
-                  setPage(1)
-                }}
+        <TabsContent value="queue">
+          <div className="mb-6">
+            <TabsList>
+              <TabsTrigger
+                value="pending"
+                onClick={() => setCurrentStatus("pending")}
+                className={currentStatus === "pending" ? "bg-primary text-primary-foreground" : ""}
               >
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="pending">
-                    Pending
-                    {stats && (
-                      <Badge variant="outline" className="ml-2">
-                        {stats.statusStats.pending}
-                      </Badge>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="approved">
-                    Approved
-                    {stats && (
-                      <Badge variant="outline" className="ml-2">
-                        {stats.statusStats.approved}
-                      </Badge>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="rejected">
-                    Rejected
-                    {stats && (
-                      <Badge variant="outline" className="ml-2">
-                        {stats.statusStats.rejected}
-                      </Badge>
-                    )}
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : moderationItems.length > 0 ? (
-                <div className="space-y-6">
-                  {moderationItems.map((item) => (
-                    <Card key={item._id} className="overflow-hidden">
-                      <CardHeader className="bg-muted/50 pb-2">
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-full overflow-hidden">
-                              <img
-                                src={item.contentOwner.profilePic || "/placeholder.svg?height=32&width=32"}
-                                alt={item.contentOwner.name}
-                                className="h-full w-full object-cover"
-                              />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">{item.contentOwner.name}</p>
-                              <p className="text-xs text-muted-foreground">@{item.contentOwner.username}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {item.contentModel === "Ping" ? (
-                              <FileText className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                            )}
-                            <Badge variant="outline">{formatReason(item.flaggedReason)}</Badge>
+                Pending
+                {moderationStats && (
+                  <Badge variant="outline" className="ml-2">
+                    {moderationStats.statusStats.pending}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="approved"
+                onClick={() => setCurrentStatus("approved")}
+                className={currentStatus === "approved" ? "bg-primary text-primary-foreground" : ""}
+              >
+                Approved
+              </TabsTrigger>
+              <TabsTrigger
+                value="rejected"
+                onClick={() => setCurrentStatus("rejected")}
+                className={currentStatus === "rejected" ? "bg-primary text-primary-foreground" : ""}
+              >
+                Rejected
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : moderationItems.length > 0 ? (
+            <div className="space-y-6">
+              {moderationItems.map((item) => (
+                <Card key={item._id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={item.contentModel === "Ping" ? "default" : "secondary"}>
+                          {item.contentModel === "Ping" ? "Post" : "Message"}
+                        </Badge>
+                        <Badge variant="outline">{item.flaggedReason.replace("_", " ")}</Badge>
+                        <span className="text-sm text-muted-foreground">{formatDate(item.createdAt)}</span>
+                      </div>
+                      {item.aiScore && (
+                        <Badge variant={item.aiScore > 0.7 ? "destructive" : "outline"}>
+                          AI Score: {(item.aiScore * 100).toFixed(0)}%
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage
+                              src={item.contentOwner.profilePic || "/placeholder.svg"}
+                              alt={item.contentOwner.name}
+                            />
+                            <AvatarFallback>
+                              {item.contentOwner.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{item.contentOwner.name}</p>
+                            <p className="text-xs text-muted-foreground">@{item.contentOwner.username}</p>
                           </div>
                         </div>
-                      </CardHeader>
-                      <CardContent className="pt-4">
-                        <div className="mb-4">
+                        <div className="bg-muted p-4 rounded-md">
                           <p className="whitespace-pre-wrap">{item.contentText}</p>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {format(new Date(item.createdAt), "MMM d, yyyy 'at' h:mm a")}
-                          </p>
                         </div>
+                      </div>
 
-                        {item.aiScore > 0 && (
-                          <div className="mb-4 p-3 bg-muted rounded-md">
-                            <p className="text-sm font-medium mb-2">AI Moderation Results</p>
-                            <div className="grid grid-cols-3 gap-2 text-xs">
-                              {Object.entries(item.aiCategories).map(([category, score]) => (
-                                <div key={category} className="flex flex-col">
-                                  <span>{formatReason(category)}</span>
-                                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                                    <div
-                                      className="bg-red-500 h-1.5 rounded-full"
-                                      style={{ width: `${score * 100}%` }}
-                                    ></div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                      {item.aiCategories && (
+                        <div className="w-64 h-64">
+                          <p className="text-sm font-medium mb-2">AI Category Analysis</p>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={generateAICategoryData(item)} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis type="number" domain={[0, 100]} />
+                              <YAxis dataKey="name" type="category" width={80} />
+                              <Tooltip formatter={(value) => [`${value}%`, "Score"]} />
+                              <Bar
+                                dataKey="value"
+                                fill="#8884d8"
+                                background={{ fill: "#eee" }}
+                                barSize={20}
+                                radius={[0, 4, 4, 0]}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
 
-                        <div className="mb-4">
-                          <p className="text-sm font-medium mb-2">Moderation Notes</p>
-                          <Textarea
-                            placeholder="Add notes about this moderation decision..."
-                            value={moderationNotes}
-                            onChange={(e) => setModerationNotes(e.target.value)}
-                            className="resize-none"
-                            rows={3}
-                          />
-                        </div>
-                      </CardContent>
-                      <CardFooter className="flex justify-between border-t bg-muted/50 p-2">
-                        <div className="text-xs text-muted-foreground">
-                          {item.flaggedBy ? (
-                            <span>Flagged by {item.flaggedBy.name}</span>
-                          ) : (
-                            <span>Flagged by system</span>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        Flagged by: {item.flaggedBy ? item.flaggedBy.name : "System"}
+                      </p>
+                    </div>
+
+                    {currentStatus === "pending" && (
+                      <div className="space-y-4">
+                        <Textarea
+                          placeholder="Add moderation notes (optional)"
+                          value={moderationNote}
+                          onChange={(e) => setModerationNote(e.target.value)}
+                        />
+                        <div className="flex items-center gap-2">
                           <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleModerate(item._id, "approved")}
-                            disabled={processingIds.includes(item._id)}
+                            onClick={() => handleModerateContent(item._id, "approved")}
+                            disabled={processingId === item._id}
+                            className="flex-1"
                           >
-                            {processingIds.includes(item._id) ? (
+                            {processingId === item._id ? (
                               <Loader2 className="h-4 w-4 animate-spin mr-2" />
                             ) : (
                               <CheckCircle className="h-4 w-4 mr-2" />
@@ -410,42 +368,220 @@ export default function ContentModerationPage() {
                           </Button>
                           <Button
                             variant="destructive"
-                            size="sm"
-                            onClick={() => handleModerate(item._id, "rejected")}
-                            disabled={processingIds.includes(item._id)}
+                            onClick={() => handleModerateContent(item._id, "rejected")}
+                            disabled={processingId === item._id}
+                            className="flex-1"
                           >
-                            {processingIds.includes(item._id) ? (
+                            {processingId === item._id ? (
                               <Loader2 className="h-4 w-4 animate-spin mr-2" />
                             ) : (
-                              <XCircle className="h-4 w-4 mr-2" />
+                              <AlertTriangle className="h-4 w-4 mr-2" />
                             )}
                             Reject
                           </Button>
                         </div>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="flex justify-center mb-4">
-                    <Flag className="h-12 w-12 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-medium">No items to moderate</h3>
-                  <p className="text-muted-foreground mt-2">
-                    There are no {currentStatus} items in the moderation queue
-                  </p>
-                </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+
+              {totalPages > 1 && (
+                <Pagination>
+                  <PaginationContent>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          isActive={page === currentPage}
+                          onClick={() => setCurrentPage(page)}
+                          className="cursor-pointer"
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+                  </PaginationContent>
+                </Pagination>
               )}
-            </CardContent>
-            {totalPages > 1 && (
-              <CardFooter className="flex justify-center border-t p-4">
-                <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-              </CardFooter>
-            )}
-          </Card>
-        </div>
-      </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12">
+              <CheckCircle className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-xl font-medium">No items to moderate</p>
+              <p className="text-muted-foreground">All content has been reviewed</p>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="stats">
+          {moderationStats ? (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Status Overview</CardTitle>
+                  <CardDescription>Current moderation queue status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center">
+                        <Clock className="h-4 w-4 mr-2 text-amber-500" />
+                        Pending
+                      </span>
+                      <Badge variant="outline">{moderationStats.statusStats.pending}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center">
+                        <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
+                        Approved
+                      </span>
+                      <Badge variant="outline">{moderationStats.statusStats.approved}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center">
+                        <AlertTriangle className="h-4 w-4 mr-2 text-red-500" />
+                        Rejected
+                      </span>
+                      <Badge variant="outline">{moderationStats.statusStats.rejected}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="font-medium">Total</span>
+                      <Badge>{moderationStats.statusStats.total}</Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Content Types</CardTitle>
+                  <CardDescription>Distribution by content type</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span>Posts</span>
+                      <Badge variant="outline">{moderationStats.contentStats.ping}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Messages</span>
+                      <Badge variant="outline">{moderationStats.contentStats.message}</Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Flag Reasons</CardTitle>
+                  <CardDescription>Why content was flagged</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Object.entries(moderationStats.reasonStats).map(([reason, count]) => (
+                      <div key={reason} className="flex items-center justify-between">
+                        <span>{reason.replace("_", " ")}</span>
+                        <Badge variant="outline">{count}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="charts">
+          {moderationStats ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Moderation Status Distribution</CardTitle>
+                  <CardDescription>Breakdown of content by moderation status</CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ReChartsPieChart>
+                      <Pie
+                        data={prepareStatusChartData()}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {prepareStatusChartData().map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value} items`, "Count"]} />
+                      <Legend />
+                    </ReChartsPieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Content Type Distribution</CardTitle>
+                  <CardDescription>Breakdown of flagged content by type</CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ReChartsPieChart>
+                      <Pie
+                        data={prepareContentTypeChartData()}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {prepareContentTypeChartData().map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value} items`, "Count"]} />
+                      <Legend />
+                    </ReChartsPieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle>Flag Reasons Distribution</CardTitle>
+                  <CardDescription>Breakdown of content by flag reason</CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={prepareReasonChartData()}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => [`${value} items`, "Count"]} />
+                      <Legend />
+                      <Bar dataKey="value" name="Count" fill="#8884d8" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

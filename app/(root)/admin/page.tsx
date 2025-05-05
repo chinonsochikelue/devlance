@@ -27,7 +27,7 @@ export default function AdminDashboardPage() {
   const {toast} = useToast()
 
   useEffect(() => {
-    if (!loading && !user?.isAdmin) {
+    if (!user?.isAdmin) {
       router.push("/home")
       return
     }

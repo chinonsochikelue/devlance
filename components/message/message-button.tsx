@@ -5,7 +5,7 @@ import { MessageSquare } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { fetchWithAuth } from "@/lib/api"
-import { toast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 
 interface MessageButtonProps {
   userId: string
@@ -15,6 +15,7 @@ interface MessageButtonProps {
 export default function MessageButton({ userId, username }: MessageButtonProps) {
   const router = useRouter()
   const { user } = useAuth()
+  const { toast } = useToast()
 
   const handleClick = async () => {
     if (!user) {
@@ -33,7 +34,7 @@ export default function MessageButton({ userId, username }: MessageButtonProps) 
 
     try {
       // Create an empty conversation if one doesn't exist
-      await fetchWithAuth("/api/messages", {
+      await fetchWithAuth(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -57,7 +58,7 @@ export default function MessageButton({ userId, username }: MessageButtonProps) 
   }
 
   return (
-    <Button onClick={handleClick} variant="outline" size="sm">
+    <Button onClick={handleClick} className="w-full">
       <MessageSquare className="mr-2 h-4 w-4" />
       Message
     </Button>
